@@ -23,6 +23,7 @@ let appState = {
     supabaseUrl: "",
     supabaseKey: "",
     whatsappPhone: "",
+    publicUrl: "",
     employeeCatalog: ["Divyesh", "Satyam", "Anuj"]
   },
   sowingLogs: [],
@@ -51,6 +52,7 @@ document.addEventListener("DOMContentLoaded", () => {
   renderSettings();
   startLiveClock();
   syncWithCloud(); // Initial sync fetch
+  setInterval(syncWithCloud, 20000); // Auto-sync every 20 seconds in background
 });
 
 // 1. STATE & STORAGE MANAGEMENT
@@ -64,6 +66,7 @@ function initStorage() {
       if (!appState.settings.supabaseUrl) { appState.settings.supabaseUrl = ""; needsSave = true; }
       if (!appState.settings.supabaseKey) { appState.settings.supabaseKey = ""; needsSave = true; }
       if (!appState.settings.whatsappPhone) { appState.settings.whatsappPhone = ""; needsSave = true; }
+      if (!appState.settings.publicUrl) { appState.settings.publicUrl = ""; needsSave = true; }
       if (!appState.settings.employeeCatalog) { 
         appState.settings.employeeCatalog = ["Divyesh", "Satyam", "Anuj"]; 
         needsSave = true; 
@@ -429,7 +432,10 @@ function renderDashboard() {
   document.getElementById("sub-plants").innerText = varietyBreakdown || "No crops sowed";
   
   document.getElementById("metric-empty-lines").innerText = emptyLinesCount;
-  document.getElementById("sub-empty-lines").innerText = `${emptyLinesCount * 63} Empty Towers available`;
+  const subEmptyLinesEl = document.getElementById("sub-empty-lines");
+  if (subEmptyLinesEl) {
+    subEmptyLinesEl.innerText = `${emptyLinesCount * 63} Empty Towers available`;
+  }
   
   document.getElementById("metric-expected-yield").innerText = `${expectedYieldAccumulator.toLocaleString()} kg`;
   document.getElementById("sub-expected-yield").innerText = `Estimated for active growing lines`;
@@ -1174,6 +1180,7 @@ function renderSettings() {
   document.getElementById("set-supabase-url").value = config.supabaseUrl || "";
   document.getElementById("set-supabase-key").value = config.supabaseKey || "";
   document.getElementById("set-whatsapp-phone").value = config.whatsappPhone || "";
+  document.getElementById("set-public-url").value = config.publicUrl || "";
   
   // Render tags
   renderCropCatalogTags();
@@ -1350,6 +1357,7 @@ function setupCloudSettings() {
       appState.settings.supabaseUrl = document.getElementById("set-supabase-url").value.trim();
       appState.settings.supabaseKey = document.getElementById("set-supabase-key").value.trim();
       appState.settings.whatsappPhone = document.getElementById("set-whatsapp-phone").value.trim();
+      appState.settings.publicUrl = document.getElementById("set-public-url").value.trim();
       saveState();
       refreshAll();
       showToast("Supabase cloud sync credentials updated!", "success");
@@ -1786,7 +1794,16 @@ function copyMobileLoggerLink() {
   const crops = appState.settings.cropCatalog.join(",");
   const emps = appState.settings.employeeCatalog.join(",");
   
-  let baseUrl = window.location.href.split("index.html")[0] + "log.html";
+  let baseUrl = appState.settings.publicUrl;
+  if (!baseUrl) {
+    baseUrl = window.location.href.split("index.html")[0];
+  }
+  
+  if (!baseUrl.endsWith("/")) {
+    baseUrl += "/";
+  }
+  
+  const finalBase = baseUrl + "log.html";
   
   const params = new URLSearchParams();
   if (url) params.set("url", url);
@@ -1795,7 +1812,7 @@ function copyMobileLoggerLink() {
   params.set("crops", crops);
   params.set("emps", emps);
   
-  const finalUrl = `${baseUrl}?${params.toString()}`;
+  const finalUrl = `${finalBase}?${params.toString()}`;
   
   navigator.clipboard.writeText(finalUrl)
     .then(() => showToast("Configured Mobile Logger URL copied to clipboard!", "success"))
