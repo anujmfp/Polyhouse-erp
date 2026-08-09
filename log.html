@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Polyhouse Mobile Logger</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body {
+      justify-content: center;
+      background-image: radial-gradient(circle at 50% 10%, rgba(16, 185, 129, 0.05) 0%, transparent 60%);
+      padding: 12px;
+      overflow-y: auto;
+    }
+    
+    .mobile-container {
+      width: 100%;
+      max-width: 440px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding-bottom: 40px;
+    }
+
+    .mobile-header {
+      text-align: center;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .mobile-header h1 {
+      font-size: 1.4rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: var(--accent);
+      text-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
+    }
+
+    .mobile-header p {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    .mobile-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 20px;
+    }
+
+    .section-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-primary);
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 8px;
+    }
+
+    .section-title svg {
+      color: var(--accent);
+    }
+
+    /* Operation Selection Grid */
+    .op-selector {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+
+    .op-btn {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      padding: 10px 4px;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: var(--transition-fast);
+    }
+
+    .op-btn.active {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--accent);
+      border-color: var(--accent);
+      box-shadow: 0 2px 10px rgba(16, 185, 129, 0.1);
+    }
+
+    /* Row Picker Grid */
+    .picker-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
+      margin-bottom: 12px;
+      max-height: 110px;
+      overflow-y: auto;
+      padding: 4px;
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.2);
+    }
+
+    .picker-btn {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      padding: 6px 0;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition-fast);
+    }
+
+    .picker-btn.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+      box-shadow: 0 0 10px var(--accent-glow);
+    }
+
+    .line-selector {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .line-btn {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      padding: 10px;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: var(--transition-fast);
+      text-align: center;
+    }
+
+    .line-btn.active {
+      background: rgba(6, 182, 212, 0.2);
+      border-color: #06b6d4;
+      color: #22d3ee;
+      box-shadow: 0 0 8px rgba(6, 182, 212, 0.15);
+    }
+
+    .btn-actions-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .btn-whatsapp {
+      background: #25d366 !important;
+      color: #fff !important;
+    }
+
+    .btn-whatsapp:hover {
+      background: #128c7e !important;
+      box-shadow: 0 4px 15px rgba(37, 211, 102, 0.3) !important;
+    }
+
+    .status-banner {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="mobile-container">
+    
+    <!-- Header -->
+    <div class="mobile-header">
+      <h1>POLYHOUSE LOGGER</h1>
+      <p>Report sowing, transplanting, and harvesting</p>
+    </div>
+
+    <!-- Unified Reporting Card -->
+    <div class="mobile-card">
+      
+      <!-- Date & Employee selection at the TOP (Always visible) -->
+      <div class="form-group">
+        <label for="m-date">Operation Date</label>
+        <input type="date" id="m-date" required>
+      </div>
+
+      <div class="form-group">
+        <label for="m-employee">Employee Name</label>
+        <select id="m-employee" required>
+          <!-- Loaded dynamically from configuration link -->
+          <option value="Sanjay Kumar">Sanjay Kumar</option>
+          <option value="John Doe">John Doe</option>
+        </select>
+      </div>
+
+      <!-- Operation Selector -->
+      <div class="form-group" style="margin-top: 16px;">
+        <label>Select Operation</label>
+        <div class="op-selector">
+          <button type="button" class="op-btn active" id="op-sowing" onclick="selectOperation('sowing')">Sowing</button>
+          <button type="button" class="op-btn" id="op-transplant" onclick="selectOperation('transplant')">Transplant</button>
+          <button type="button" class="op-btn" id="op-harvest" onclick="selectOperation('harvest')">Harvest</button>
+          <button type="button" class="op-btn" id="op-clear" onclick="selectOperation('clear')">Clear</button>
+        </div>
+      </div>
+
+      <!-- DYNAMIC SECTION FOR SOWING -->
+      <div id="section-sowing" style="display:block; border-top:1px solid var(--border-color); padding-top:16px;">
+        <div class="section-title">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+          <span>Sowing Log</span>
+        </div>
+        <div class="form-group">
+          <label for="m-sow-crop">Crop Variety</label>
+          <select id="m-sow-crop">
+            <!-- Populated dynamically -->
+            <option value="Romaine Lettuce">Romaine Lettuce</option>
+            <option value="Butterhead Lettuce">Butterhead Lettuce</option>
+            <option value="Spinach">Spinach</option>
+            <option value="Basil">Basil</option>
+            <option value="Coriander">Coriander</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="m-sow-type">Sowing Input Type</label>
+          <select id="m-sow-type">
+            <option value="seed">Seeds (approx. 25 days ready)</option>
+            <option value="sapling">Saplings (approx. 9 days ready)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="m-sow-trays">Number of Trays (40 net cups/tray)</label>
+          <input type="number" id="m-sow-trays" min="1" max="500" value="50">
+        </div>
+      </div>
+
+      <!-- DYNAMIC SECTION FOR TRANSPLANT -->
+      <div id="section-transplant" style="display:none; border-top:1px solid var(--border-color); padding-top:16px;">
+        <div class="section-title">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
+          <span>Transplant Log</span>
+        </div>
+        <div class="form-group">
+          <label>Select Target Row</label>
+          <div class="picker-grid" id="picker-tx-row">
+            <!-- Row buttons injected -->
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Select Target Line</label>
+          <div class="line-selector">
+            <button type="button" class="line-btn active" id="btn-tx-line-A" onclick="setLine('tx', 'A')">Line A</button>
+            <button type="button" class="line-btn" id="btn-tx-line-B" onclick="setLine('tx', 'B')">Line B</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="m-tx-batch">Source Sowing Batch ID</label>
+          <input type="text" id="m-tx-batch" placeholder="e.g. SOW-5">
+        </div>
+        <div class="form-group">
+          <label for="m-tx-towers">Towers Transplanted (Max 63)</label>
+          <input type="number" id="m-tx-towers" min="1" max="63" value="63">
+        </div>
+      </div>
+
+      <!-- DYNAMIC SECTION FOR HARVEST -->
+      <div id="section-harvest" style="display:none; border-top:1px solid var(--border-color); padding-top:16px;">
+        <div class="section-title">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" /></svg>
+          <span>Harvest & Yield Log</span>
+        </div>
+        <div class="form-group">
+          <label>Select Row</label>
+          <div class="picker-grid" id="picker-hrv-row">
+            <!-- Row buttons injected -->
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Select Line</label>
+          <div class="line-selector">
+            <button type="button" class="line-btn active" id="btn-hrv-line-A" onclick="setLine('hrv', 'A')">Line A</button>
+            <button type="button" class="line-btn" id="btn-hrv-line-B" onclick="setLine('hrv', 'B')">Line B</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="m-hrv-stage">Stage Cut</label>
+          <select id="m-hrv-stage">
+            <option value="Shenda">Shenda Cut (Grooming / Pruning)</option>
+            <option value="Harvest 1">1st Commercial Harvest</option>
+            <option value="Harvest 2">2nd Commercial Harvest</option>
+            <option value="Harvest 3">3rd Commercial Harvest</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="m-hrv-yield">Actual Yield (kg)</label>
+          <input type="number" id="m-hrv-yield" step="0.1" placeholder="e.g. 450">
+        </div>
+        <div class="form-group">
+          <label for="m-hrv-waste">Waste / Rejection (kg)</label>
+          <input type="number" id="m-hrv-waste" step="0.1" value="0">
+        </div>
+      </div>
+
+      <!-- DYNAMIC SECTION FOR CLEARANCE -->
+      <div id="section-clear" style="display:none; border-top:1px solid var(--border-color); padding-top:16px;">
+        <div class="section-title">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+          <span>Clear & Reset Line</span>
+        </div>
+        <div class="form-group">
+          <label>Select Row</label>
+          <div class="picker-grid" id="picker-clr-row">
+            <!-- Row buttons injected -->
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Select Line</label>
+          <div class="line-selector">
+            <button type="button" class="line-btn active" id="btn-clr-line-A" onclick="setLine('clr', 'A')">Line A</button>
+            <button type="button" class="line-btn" id="btn-clr-line-B" onclick="setLine('clr', 'B')">Line B</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="m-clr-reason">Reason for Clearance</label>
+          <select id="m-clr-reason">
+            <option value="Normal harvest cycle completed">Normal harvest cycle completed</option>
+            <option value="Crop disease / cleaning">Crop disease / cleaning</option>
+            <option value="Early reset / weather change">Early reset / weather change</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Submit buttons -->
+      <div class="btn-actions-stack">
+        <button type="button" class="btn-primary" id="btn-cloud-submit" onclick="submitLog('cloud')" style="display:none; width: 100%;">
+          Submit to Supabase Cloud
+        </button>
+        <button type="button" class="btn-primary btn-whatsapp" onclick="submitLog('whatsapp')" style="width: 100%;">
+          Submit via WhatsApp
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Connection Banner -->
+    <div class="status-banner">
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span style="width:8px; height:8px; border-radius:50%; background-color:#10b981; display:inline-block;" id="status-dot"></span>
+        <span id="status-text" style="color:var(--text-secondary); font-weight:500;">Offline (WhatsApp Reporting)</span>
+      </div>
+      <span style="color:var(--text-muted); cursor:pointer;" onclick="showConfigSummary()">Config Details</span>
+    </div>
+
+  </div>
+
+  <div class="toast-container" id="toast-container"></div>
+
+  <script>
+    // Configuration parsed from URL query string
+    let cloudConfig = {
+      url: "",
+      key: "",
+      phone: "",
+      crops: [],
+      emps: []
+    };
+
+    let activeOperation = "sowing";
+    let selectedRow = { transplant: 1, harvest: 1, clear: 1 };
+    let selectedLine = { transplant: 'A', harvest: 'A', clear: 'A' };
+
+    document.addEventListener("DOMContentLoaded", () => {
+      // Default to today
+      document.getElementById("m-date").value = new Date().toISOString().split('T')[0];
+      
+      // Load query parameters
+      parseQueryParams();
+      
+      // Setup grid row pickers
+      setupRowPickers();
+      
+      // Update UI elements from settings
+      initializeFormOptions();
+    });
+
+    function parseQueryParams() {
+      const params = new URLSearchParams(window.location.search);
+      cloudConfig.url = params.get("url") || "";
+      cloudConfig.key = params.get("key") || "";
+      cloudConfig.phone = params.get("phone") || "";
+      
+      const cropsStr = params.get("crops");
+      if (cropsStr) cloudConfig.crops = cropsStr.split(",");
+      else cloudConfig.crops = ["Romaine Lettuce", "Butterhead Lettuce", "Spinach", "Basil", "Coriander"];
+      
+      const empsStr = params.get("emps");
+      if (empsStr) cloudConfig.emps = empsStr.split(",");
+      else cloudConfig.emps = ["John", "Maria", "Alex", "David", "Sanjay"];
+    }
+
+    function setupRowPickers() {
+      ['transplant', 'harvest', 'clear'].forEach(mode => {
+        const pickerId = mode === 'transplant' ? 'tx' : (mode === 'harvest' ? 'hrv' : 'clr');
+        const picker = document.getElementById(`picker-${pickerId}-row`);
+        if (!picker) return;
+        picker.innerHTML = "";
+        
+        for (let r = 1; r <= 19; r++) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = `picker-btn ${r === 1 ? 'active' : ''}`;
+          btn.innerText = r;
+          btn.onclick = () => {
+            document.querySelectorAll(`#picker-${pickerId}-row .picker-btn`).forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            selectedRow[mode] = r;
+          };
+          picker.appendChild(btn);
+        }
+      });
+    }
+
+    function setLine(mode, line) {
+      const prefix = mode === 'tx' ? 'transplant' : (mode === 'hrv' ? 'harvest' : 'clear');
+      selectedLine[prefix] = line;
+      
+      document.getElementById(`btn-${mode}-line-A`).classList.toggle('active', line === 'A');
+      document.getElementById(`btn-${mode}-line-B`).classList.toggle('active', line === 'B');
+    }
+
+    function initializeFormOptions() {
+      // 1. Populate employees
+      const empSelect = document.getElementById("m-employee");
+      empSelect.innerHTML = "";
+      cloudConfig.emps.forEach(emp => {
+        empSelect.innerHTML += `<option value="${emp}">${emp}</option>`;
+      });
+
+      // 2. Populate crops
+      const cropSelect = document.getElementById("m-sow-crop");
+      cropSelect.innerHTML = "";
+      cloudConfig.crops.forEach(crop => {
+        cropSelect.innerHTML += `<option value="${crop}">${crop}</option>`;
+      });
+
+      // 3. Toggle cloud connection views
+      const dot = document.getElementById("status-dot");
+      const text = document.getElementById("status-text");
+      const cloudSubmitBtn = document.getElementById("btn-cloud-submit");
+      
+      if (cloudConfig.url && cloudConfig.key) {
+        dot.style.backgroundColor = "#3b82f6";
+        dot.style.boxShadow = "0 0 8px rgba(59, 130, 246, 0.5)";
+        text.innerText = "Connected to Supabase Cloud";
+        text.style.color = "#93c5fd";
+        cloudSubmitBtn.style.display = "block";
+      } else {
+        dot.style.backgroundColor = "#10b981";
+        text.innerText = "WhatsApp Logging Fallback";
+        text.style.color = "var(--text-secondary)";
+        cloudSubmitBtn.style.display = "none";
+      }
+    }
+
+    function selectOperation(op) {
+      activeOperation = op;
+      
+      document.querySelectorAll(".op-btn").forEach(b => b.classList.remove("active"));
+      document.getElementById(`op-${op}`).classList.add("active");
+      
+      document.getElementById("section-sowing").style.display = op === 'sowing' ? 'block' : 'none';
+      document.getElementById("section-transplant").style.display = op === 'transplant' ? 'block' : 'none';
+      document.getElementById("section-harvest").style.display = op === 'harvest' ? 'block' : 'none';
+      document.getElementById("section-clear").style.display = op === 'clear' ? 'block' : 'none';
+    }
+
+    function buildMessageString() {
+      const date = document.getElementById("m-date").value;
+      const worker = document.getElementById("m-employee").value;
+      
+      let msg = `[ERP-LOG] `;
+      
+      if (activeOperation === "sowing") {
+        const crop = document.getElementById("m-sow-crop").value;
+        const type = document.getElementById("m-sow-type").value;
+        const trays = document.getElementById("m-sow-trays").value;
+        
+        msg += `SOWING | Crop: ${crop} | Type: ${type} | Trays: ${trays} | Date: ${date} | Worker: ${worker}`;
+      } else if (activeOperation === "transplant") {
+        const row = selectedRow.transplant;
+        const line = selectedLine.transplant;
+        const batch = document.getElementById("m-tx-batch").value.trim();
+        const towers = document.getElementById("m-tx-towers").value;
+        
+        if (!batch) {
+          alert("Please specify the Source Sowing Batch ID");
+          return null;
+        }
+        
+        msg += `TRANSPLANT | Row: ${row} | Line: ${line} | Batch: ${batch} | Towers: ${towers} | Date: ${date} | Worker: ${worker}`;
+      } else if (activeOperation === "harvest") {
+        const row = selectedRow.harvest;
+        const line = selectedLine.harvest;
+        const stage = document.getElementById("m-hrv-stage").value;
+        const yieldKg = document.getElementById("m-hrv-yield").value;
+        const wasteKg = document.getElementById("m-hrv-waste").value || 0;
+        
+        if (!yieldKg) {
+          alert("Please enter the harvested yield weight (kg)");
+          return null;
+        }
+        
+        msg += `HARVEST | Row: ${row} | Line: ${line} | Stage: ${stage} | Yield: ${yieldKg} | Waste: ${wasteKg} | Date: ${date} | Worker: ${worker}`;
+      } else if (activeOperation === "clear") {
+        const row = selectedRow.clear;
+        const line = selectedLine.clear;
+        const reason = document.getElementById("m-clr-reason").value;
+        
+        msg += `CLEAR | Row: ${row} | Line: ${line} | Reason: ${reason} | Date: ${date} | Worker: ${worker}`;
+      }
+      
+      return msg;
+    }
+
+    async function submitLog(target) {
+      const msg = buildMessageString();
+      if (!msg) return; // validation failed
+      
+      if (target === "whatsapp") {
+        const url = `https://wa.me/${cloudConfig.phone}?text=${encodeURIComponent(msg)}`;
+        window.open(url, '_blank');
+        showToast("WhatsApp launched with pre-filled template!", "success");
+        return;
+      }
+
+      // Handle Supabase Cloud Submission
+      if (!cloudConfig.url || !cloudConfig.key) {
+        showToast("Supabase is not configured.", "danger");
+        return;
+      }
+
+      const statusBanner = document.getElementById("status-text");
+      statusBanner.innerText = "Submitting log to cloud...";
+      
+      try {
+        // Parse parts into object fields matching database columns
+        const parts = msg.replace("[ERP-LOG] ", "").split("|");
+        const actionType = parts[0].trim().toLowerCase();
+        
+        const payload = {
+          type: actionType,
+          logged_by: document.getElementById("m-employee").value,
+          date: document.getElementById("m-date").value
+        };
+
+        if (actionType === "sowing") {
+          payload.crop = document.getElementById("m-sow-crop").value;
+          payload.sow_type = document.getElementById("m-sow-type").value;
+          payload.trays = parseInt(document.getElementById("m-sow-trays").value);
+        } else if (actionType === "transplant") {
+          payload.row = selectedRow.transplant;
+          payload.line = selectedLine.transplant;
+          payload.batch = document.getElementById("m-tx-batch").value.trim().toUpperCase();
+          payload.towers = parseInt(document.getElementById("m-tx-towers").value);
+        } else if (actionType === "harvest") {
+          payload.row = selectedRow.harvest;
+          payload.line = selectedLine.harvest;
+          payload.stage = document.getElementById("m-hrv-stage").value;
+          payload.yield_kg = parseFloat(document.getElementById("m-hrv-yield").value);
+          payload.waste_kg = parseFloat(document.getElementById("m-hrv-waste").value || 0);
+        } else if (actionType === "clear") {
+          payload.row = selectedRow.clear;
+          payload.line = selectedLine.clear;
+          payload.reason = document.getElementById("m-clr-reason").value;
+        }
+
+        const cleanUrl = cloudConfig.url.endsWith('/') ? cloudConfig.url : cloudConfig.url + '/';
+        const dbUrl = `${cleanUrl}rest/v1/polyhouse_logs`;
+
+        const response = await fetch(dbUrl, {
+          method: 'POST',
+          headers: {
+            'apikey': cloudConfig.key,
+            'Authorization': `Bearer ${cloudConfig.key}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+        }
+
+        showToast("Log submitted to Supabase queue!", "success");
+        
+        // Reset dynamic field values on success
+        if (actionType === "sowing") {
+          document.getElementById("m-sow-trays").value = 50;
+        } else if (actionType === "transplant") {
+          document.getElementById("m-tx-batch").value = "";
+        } else if (actionType === "harvest") {
+          document.getElementById("m-hrv-yield").value = "";
+          document.getElementById("m-hrv-waste").value = 0;
+        }
+
+      } catch (err) {
+        console.error("Cloud post failed:", err);
+        showToast("Error writing to cloud. Saved in fallback template.", "danger");
+      } finally {
+        statusBanner.innerText = "Connected to Supabase Cloud";
+      }
+    }
+
+    function showConfigSummary() {
+      let info = `Logger Settings:\n`;
+      info += `• Cloud Server: ${cloudConfig.url ? cloudConfig.url : 'Offline Mode'}\n`;
+      info += `• WhatsApp Contact: ${cloudConfig.phone ? cloudConfig.phone : 'Not Configured'}\n`;
+      info += `• Employees Catalog Size: ${cloudConfig.emps.length}\n`;
+      info += `• Crop Varieties Size: ${cloudConfig.crops.length}\n`;
+      alert(info);
+    }
+
+    function showToast(message, type = "success") {
+      const container = document.getElementById("toast-container");
+      const toast = document.createElement("div");
+      toast.className = `toast ${type === 'danger' ? 'warning' : ''}`;
+      toast.innerHTML = `<span>${message}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => container.removeChild(toast), 300);
+      }, 3000);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Polyhouse Growth & Yield ERP</title>
+  <link rel="stylesheet" href="styles.css">
+  <!-- Chart.js Secure CDN for Interactive Charts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+  <!-- Sidebar Navigation -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.343l-.707-.707m12.728 12.728A9 9 0 115.636 5.636a9 9 0 0112.728 12.728z" />
+      </svg>
+      <span>POLYHOUSE ERP</span>
+    </div>
+    
+    <ul class="sidebar-menu">
+      <li>
+        <a href="#" class="menu-item active" data-tab="tab-dashboard">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2v-4zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2v-4z" />
+          </svg>
+          <span>Dashboard</span>
+        </a>
+      </li>
+      <li>
+        <a href="#" class="menu-item" data-tab="tab-operations">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+          </svg>
+          <span>Daily Logs</span>
+        </a>
+      </li>
+      <li>
+        <a href="#" class="menu-item" data-tab="tab-analytics">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+          </svg>
+          <span>Analytics</span>
+        </a>
+      </li>
+      <li>
+        <a href="#" class="menu-item" data-tab="tab-settings">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <span>Settings</span>
+        </a>
+      </li>
+    </ul>
+  </aside>
+
+  <!-- Main Content container -->
+  <main class="main-content">
+    
+    <!-- Top Header -->
+    <header>
+      <div>
+        <h1>Polyhouse Operations ERP</h1>
+        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 4px;">Track and analyze yield efficiency of 2,394 hydroponic towers</p>
+      </div>
+      <div class="header-meta">
+        <span id="live-clock" style="font-weight: 500;">August 9, 2026</span>
+        <div class="live-indicator">
+          <div class="live-dot"></div>
+          <span>OPERATIONAL LIVE</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Operational Alerts Display -->
+    <div id="alerts-panel" class="alerts-container">
+      <!-- Generated via app.js -->
+    </div>
+
+    <!-- 1. DASHBOARD TAB -->
+    <section id="tab-dashboard" class="tab-content active">
+      <!-- Metrics Overview row -->
+      <div class="metrics-grid">
+        <div class="card primary">
+          <div class="card-title">
+            <span>Occupancy Rate</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+          </div>
+          <div class="card-value" id="metric-occupancy">0%</div>
+          <div class="card-subtext" id="sub-occupancy">0 / 2394 Towers</div>
+        </div>
+
+        <div class="card warning">
+          <div class="card-title">
+            <span>Active Plants</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.343l-.707-.707m12.728 12.728A9 9 0 115.636 5.636a9 9 0 0112.728 12.728z" /></svg>
+          </div>
+          <div class="card-value" id="metric-plants">0</div>
+          <div class="card-subtext" id="sub-plants">No crops transplanted</div>
+        </div>
+
+        <div class="card info">
+          <div class="card-title">
+            <span>Ready Trays</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+          </div>
+          <div class="card-value" id="metric-ready-trays">0</div>
+          <div class="card-subtext" id="sub-ready-trays">0 plants ready to transplant</div>
+        </div>
+
+        <div class="card danger">
+          <div class="card-title">
+            <span>Expected Yield Trend</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+          </div>
+          <div class="card-value" id="metric-expected-yield">0 kg</div>
+          <div class="card-subtext" id="sub-expected-yield">Estimated from active cycles</div>
+        </div>
+      </div>
+
+      <!-- Main Farm Map -->
+      <div class="polyhouse-grid-container">
+        <div class="grid-header">
+          <div>
+            <h2 style="font-size: 1.2rem; font-weight: 600;">Polyhouse Layout Map</h2>
+            <p style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 4px;">Click on any tower cell to review status or record growth actions (Shenda Cut, Harvest, Reset)</p>
+          </div>
+          <div class="legend">
+            <div class="legend-item"><span class="legend-color state-empty"></span><span>Empty</span></div>
+            <div class="legend-item"><span class="legend-color state-transplanted"></span><span>Transplanted</span></div>
+            <div class="legend-item"><span class="legend-color state-shenda"></span><span>Shenda Done</span></div>
+            <div class="legend-item"><span class="legend-color state-harvest1"></span><span>Harvest 1</span></div>
+            <div class="legend-item"><span class="legend-color state-harvest2"></span><span>Harvest 2</span></div>
+            <div class="legend-item"><span class="legend-color state-harvest3"></span><span>Harvest 3</span></div>
+            <div class="legend-item"><span class="legend-color state-ready"></span><span>Ready Action</span></div>
+          </div>
+        </div>
+
+        <!-- Interactive Map Grid of 19 rows -->
+        <div class="polyhouse-map" id="polyhouse-grid-map">
+          <!-- Populated by app.js -->
+        </div>
+      </div>
+
+      <!-- Under-Grid Side Panels -->
+      <div class="dashboard-panels">
+        <!-- Germination and Nursery status -->
+        <div class="card">
+          <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 16px;">Sowing Nursery Status (Trays)</h3>
+          <div class="tray-status-list" id="tray-status-list">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <!-- System Summary details -->
+        <div class="card">
+          <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 16px;">Space Availability</h3>
+          <div style="margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.85rem;">
+              <span class="text-secondary">Empty Lines</span>
+              <span id="metric-empty-lines" style="font-weight: 600;">0</span>
+            </div>
+            <div id="empty-lines-list">
+              <!-- Dynamic list of empty rows -->
+            </div>
+          </div>
+          
+          <div style="border-top: 1px solid var(--border-color); padding-top: 16px; font-size: 0.8rem; color: var(--text-muted); line-height: 1.5;">
+            <p><strong>Tower Capacity Logic:</strong></p>
+            <p>• Rows 1 - 7: 40 plants per tower (10 holders x 4 plants)</p>
+            <p>• Rows 8 - 19: 60 plants per tower (15 holders x 4 plants)</p>
+            <p>• 126 towers (63 per line A & B) in each row</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. OPERATIONS & LOGS TAB -->
+    <section id="tab-operations" class="tab-content">
+      <div class="operations-layout">
+        
+        <!-- Left Side Forms -->
+        <div class="form-card">
+          <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 20px; border-bottom:1px solid var(--border-color); padding-bottom:10px;">Operation Sowing</h3>
+          <form id="form-sowing">
+            <div class="form-group">
+              <label for="sow-crop">Select Crop Variety</label>
+              <select id="sow-crop" required>
+                <!-- Populated dynamically from catalog -->
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="sow-type">Sowing Input Type</label>
+              <select id="sow-type" required>
+                <option value="seed">Seeds (approx. 25 days ready)</option>
+                <option value="sapling">Saplings (approx. 9 days ready)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="sow-trays">Number of Trays (40 net cups/tray)</label>
+              <input type="number" id="sow-trays" min="1" max="1000" placeholder="e.g. 50" required>
+            </div>
+            <div class="form-group">
+              <label for="sow-date">Sowing Date</label>
+              <input type="date" id="sow-date" required>
+            </div>
+            <button type="submit" class="btn-primary">Register Sowing Batch</button>
+          </form>
+
+          <h3 style="font-size: 1.1rem; font-weight: 600; margin-top: 30px; margin-bottom: 20px; border-bottom:1px solid var(--border-color); padding-bottom:10px;">Operation Transplant</h3>
+          <form id="form-transplant">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="tx-row">Target Row</label>
+                <select id="tx-row" required>
+                  <!-- 1 to 19 options -->
+                  <script>
+                    for(let i=1; i<=19; i++) {
+                      document.write(`<option value="${i}">Row ${i}</option>`);
+                    }
+                  </script>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="tx-line">Line</label>
+                <select id="tx-line" required>
+                  <option value="A">Line A</option>
+                  <option value="B">Line B</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="tx-batch">Source Germinated Batch</label>
+              <select id="tx-batch" required>
+                <!-- Populated dynamically -->
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="tx-towers">Towers Transplanted</label>
+              <input type="number" id="tx-towers" min="1" max="63" value="63" required>
+            </div>
+            <div class="form-group">
+              <label for="tx-date">Transplant Date</label>
+              <input type="date" id="tx-date" required>
+            </div>
+            <button type="submit" class="btn-primary">Log Transplant Operation</button>
+          </form>
+
+          <h3 style="font-size: 1.1rem; font-weight: 600; margin-top: 30px; margin-bottom: 20px; border-bottom:1px solid var(--border-color); padding-bottom:10px;">Operation Harvest</h3>
+          <form id="form-harvest">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="hrv-row">Row</label>
+                <select id="hrv-row" required>
+                  <script>
+                    for(let i=1; i<=19; i++) {
+                      document.write(`<option value="${i}">Row ${i}</option>`);
+                    }
+                  </script>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="hrv-line">Line</label>
+                <select id="hrv-line" required>
+                  <option value="A">Line A</option>
+                  <option value="B">Line B</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="hrv-stage">Harvest Cut Stage</label>
+              <select id="hrv-stage" required>
+                <option value="Shenda">Shenda Cut (Grooming / Pruning)</option>
+                <option value="Harvest 1">1st Commercial Harvest</option>
+                <option value="Harvest 2">2nd Commercial Harvest</option>
+                <option value="Harvest 3">3rd Commercial Harvest</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="hrv-yield">Actual Yield (kg)</label>
+                <input type="number" id="hrv-yield" step="0.1" min="0" placeholder="e.g. 450" required>
+              </div>
+              <div class="form-group">
+                <label for="hrv-waste">Waste / Rejection (kg)</label>
+                <input type="number" id="hrv-waste" step="0.1" min="0" placeholder="e.g. 10">
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="hrv-date">Operation Date</label>
+              <input type="date" id="hrv-date" required>
+            </div>
+            <button type="submit" class="btn-primary">Register Harvest Data</button>
+          </form>
+        </div>
+
+        <!-- Right Side History Table & Parsers -->
+        <div style="display:flex; flex-direction:column; gap:20px; width:100%;">
+          
+          <!-- Bulk WhatsApp Parser Card -->
+          <div class="form-card" style="padding: 24px;">
+            <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 12px; border-bottom:1px solid var(--border-color); padding-bottom:6px;">WhatsApp Message Import Parser</h3>
+            <p style="color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 12px;">Paste raw reports shared by team members on WhatsApp to parse and import them in bulk.</p>
+            <textarea id="wa-paste-area" rows="4" placeholder="Paste WhatsApp messages here...&#10;e.g.&#10;[ERP-LOG] SOWING | Crop: Spinach | Type: seed | Trays: 50 | Date: 2026-08-09&#10;[ERP-LOG] HARVEST | Row: 12 | Line: A | Stage: Harvest 1 | Yield: 450.5 | Waste: 10.2 | Date: 2026-08-09" style="resize:vertical; margin-bottom:12px; font-family: monospace; font-size: 0.8rem;"></textarea>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <button class="btn-primary" style="width:auto; padding:8px 16px; font-size:0.85rem;" onclick="parseWhatsAppText()">Analyze Text</button>
+              <div id="wa-parse-status" style="font-size:0.8rem; color:var(--text-muted);"></div>
+            </div>
+            
+            <div id="wa-parse-preview" style="margin-top:16px; display:none;">
+              <h4 style="font-size:0.85rem; font-weight:600; margin-bottom:8px; color:var(--accent);">Detected Logs Preview</h4>
+              <div id="wa-parse-list" style="max-height:180px; overflow-y:auto; border:1px solid var(--border-color); border-radius:8px; margin-bottom:12px; background:rgba(0,0,0,0.2); padding:10px;"></div>
+              <button class="btn-primary" style="background:#047857;" onclick="importParsedLogs()">Confirm & Import Logs</button>
+            </div>
+          </div>
+
+          <div class="log-card">
+          <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 20px;">Operation History Logs</h3>
+          
+          <div class="log-filters">
+            <button class="log-filter-btn active" data-filter="all" onclick="filterLogs('all', this)">All Logs</button>
+            <button class="log-filter-btn" data-filter="sowing" onclick="filterLogs('sowing', this)">Sowing</button>
+            <button class="log-filter-btn" data-filter="transplant" onclick="filterLogs('transplant', this)">Transplants</button>
+            <button class="log-filter-btn" data-filter="harvest" onclick="filterLogs('harvest', this)">Yield/Harvest</button>
+            <button class="log-filter-btn" data-filter="clear" onclick="filterLogs('clear', this)">Clearances</button>
+          </div>
+
+          <div class="log-table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Action</th>
+                  <th>ID</th>
+                  <th>Crop</th>
+                  <th>Operation Details</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="logs-table-body">
+                <!-- Dynamically generated rows -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+        </div> <!-- End of wrapper -->
+
+      </div>
+    </section>
+
+    <!-- 3. ANALYTICS & TRENDS TAB -->
+    <section id="tab-analytics" class="tab-content">
+      <div class="analytics-grid">
+        <!-- Yield chart -->
+        <div class="chart-card">
+          <div>
+            <h3 style="font-size: 1.1rem; font-weight: 600;">Crop Yield Performance</h3>
+            <p style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 4px;">Total commercial yield vs. waste weight per crop variety</p>
+          </div>
+          <div class="chart-container">
+            <canvas id="yield-trend-chart"></canvas>
+          </div>
+        </div>
+
+        <!-- Row efficiency chart -->
+        <div class="chart-card">
+          <div>
+            <h3 style="font-size: 1.1rem; font-weight: 600;">Row Yield Efficiency</h3>
+            <p style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 4px;">Average gram output per plant for each of the 19 rows</p>
+          </div>
+          <div class="chart-container">
+            <canvas id="efficiency-chart"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. SETTINGS TAB -->
+    <section id="tab-settings" class="tab-content">
+      <div class="settings-grid">
+        
+        <!-- Left Column Settings Forms -->
+        <div class="setting-section">
+          <div class="form-card">
+            <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 20px; border-bottom:1px solid var(--border-color); padding-bottom:10px;">Polyhouse Layout Parameters</h3>
+            <form id="form-settings">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="set-rows">Number of Rows</label>
+                  <input type="number" id="set-rows" min="1" max="100" required>
+                </div>
+                <div class="form-group">
+                  <label for="set-towers-line">Towers Per Line</label>
+                  <input type="number" id="set-towers-line" min="1" max="500" required>
+                </div>
+              </div>
+              
+              <h4 style="font-size: 0.9rem; font-weight:600; color:var(--text-secondary); margin:12px 0 8px 0;">Rows 1 to 7 Towers Structure</h4>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="set-r1-holders">Holders Per Tower</label>
+                  <input type="number" id="set-r1-holders" required>
+                </div>
+                <div class="form-group">
+                  <label for="set-r1-plants">Plants Per Holder</label>
+                  <input type="number" id="set-r1-plants" required>
+                </div>
+              </div>
+
+              <h4 style="font-size: 0.9rem; font-weight:600; color:var(--text-secondary); margin:12px 0 8px 0;">Rows 8 to 19 Towers Structure</h4>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="set-r8-holders">Holders Per Tower</label>
+                  <input type="number" id="set-r8-holders" required>
+                </div>
+                <div class="form-group">
+                  <label for="set-r8-plants">Plants Per Holder</label>
+                  <input type="number" id="set-r8-plants" required>
+                </div>
+              </div>
+
+              <h4 style="font-size: 0.9rem; font-weight:600; color:var(--text-secondary); margin:12px 0 8px 0;">Crop Cycle Configurations (Days)</h4>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="set-germ-seed">Seed Germination Ready Time</label>
+                  <input type="number" id="set-germ-seed" required>
+                </div>
+                <div class="form-group">
+                  <label for="set-germ-sapling">Sapling Germination Ready Time</label>
+                  <input type="number" id="set-germ-sapling" required>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="set-shenda-days">Transplant to Shenda Cut</label>
+                  <input type="number" id="set-shenda-days" required>
+                </div>
+                <div class="form-group">
+                  <label for="set-harvest-days">Harvest Interval (Days)</label>
+                  <input type="number" id="set-harvest-days" required>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="set-harvest-total">Commercial Harvests Count</label>
+                  <input type="number" id="set-harvest-total" required>
+                </div>
+                <div class="form-group">
+                  <label for="set-default-yield">Default Yield per Plant (kg)</label>
+                  <input type="number" id="set-default-yield" step="0.01" required>
+                </div>
+              </div>
+
+              <button type="submit" class="btn-primary" style="margin-top:10px;">Save Configuration Settings</button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Right Column Catalog & Utilities -->
+        <div class="setting-section">
+          <!-- Crop variety Catalog -->
+          <div class="card">
+            <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 12px; border-bottom:1px solid var(--border-color); padding-bottom:10px;">Crop Variety Catalog</h3>
+            <p style="color: var(--text-secondary); font-size: 0.8rem; margin-bottom:12px;">Add or remove crop types that are sowed in the polyhouse</p>
+            
+            <div style="display: flex; gap: 8px;">
+              <input type="text" id="new-crop-input" placeholder="e.g. Romaine Lettuce" style="flex:1;">
+              <button class="btn-primary" style="width: auto; padding: 10px 20px;" onclick="addCropToCatalog()">Add</button>
+            </div>
+            
+            <div class="crop-catalog-box" id="crop-catalog-tags">
+              <!-- Dynamically populated tags -->
+            </div>
+          </div>
+
+          <!-- Employee Catalog -->
+          <div class="card" style="margin-top: 20px;">
+            <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 12px; border-bottom:1px solid var(--border-color); padding-bottom:10px;">Employee Directory</h3>
+            <p style="color: var(--text-secondary); font-size: 0.8rem; margin-bottom:12px;">Add or remove employee names for logging dropdowns</p>
+            
+            <div style="display: flex; gap: 8px;">
+              <input type="text" id="new-employee-input" placeholder="e.g. Sanjay Kumar" style="flex:1;">
+              <button class="btn-primary" style="width: auto; padding: 10px 20px;" onclick="addEmployeeToCatalog()">Add</button>
+            </div>
+            
+            <div class="crop-catalog-box" id="employee-catalog-tags">
+              <!-- Dynamically populated tags -->
+            </div>
+          </div>
+
+          <!-- ERP Backup / Admin Commands -->
+          <div class="card">
+            <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 12px; border-bottom:1px solid var(--border-color); padding-bottom:10px;">Database Utilities & Data Management</h3>
+            <p style="color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 16px;">Export operational database records or upload an existing backup.</p>
+            
+            <div style="display:flex; flex-direction:column; gap: 12px;">
+              <div>
+                <label>Restore Database from JSON Backup</label>
+                <div style="display:flex; gap:8px;">
+                  <input type="file" id="import-file-input" accept=".json" style="padding: 6px;">
+                  <button class="btn-secondary" onclick="importData()">Upload & Restore</button>
+                </div>
+              </div>
+              
+              <div class="admin-actions">
+                <button class="btn-secondary" onclick="exportData()">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="display:inline; vertical-align:middle; margin-right:6px;"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                  Export Operational DB
+                </button>
+                <button class="btn-secondary" style="border-color: rgba(59,130,246,0.3); color:#60a5fa;" onclick="loadDemoData()">
+                  Load Simulated Demo Data
+                </button>
+                <button class="btn-danger" onclick="clearAllData()">
+                  Reset Database & Layout
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Supabase Cloud Sync Card -->
+          <div class="card" style="margin-top: 20px;">
+            <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 12px; border-bottom:1px solid var(--border-color); padding-bottom:10px;">Supabase Cloud Settings</h3>
+            <p style="color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 16px;">Configure Supabase cloud sync credentials and target WhatsApp number for reports.</p>
+            
+            <form id="form-cloud-settings">
+              <div class="form-group">
+                <label for="set-supabase-url">Supabase API URL</label>
+                <input type="url" id="set-supabase-url" placeholder="https://your-project-id.supabase.co">
+              </div>
+              <div class="form-group">
+                <label for="set-supabase-key">Supabase Anon Key</label>
+                <input type="text" id="set-supabase-key" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+              </div>
+              <div class="form-group">
+                <label for="set-whatsapp-phone">WhatsApp Target Phone (Optional)</label>
+                <input type="text" id="set-whatsapp-phone" placeholder="e.g. 919876543210">
+                <small style="color:var(--text-muted); font-size:0.75rem; display:block; margin-top:4px;">Phone number for reporting fallback (WhatsApp Web/App redirect).</small>
+              </div>
+              <button type="submit" class="btn-primary">Save Cloud Settings</button>
+            </form>
+            <div style="margin-top:16px; border-top: 1px solid var(--border-color); padding-top:16px;">
+              <button class="btn-secondary" style="border-color:var(--accent); color:var(--accent); width:100%;" onclick="copyMobileLoggerLink()">Copy Configured Mobile Link</button>
+              <small style="color:var(--text-muted); font-size:0.75rem; display:block; margin-top:6px; text-align:center;">Copies a fully configured URL containing your Supabase keys, crops, and employee directory to share with workers.</small>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Popup Dialog Modal (Quick Line Operations) -->
+  <div class="modal-overlay" id="line-modal-overlay" onclick="if(event.target === this) closeLineModal()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="line-modal-title">Row X Line Y Details</h3>
+        <button class="modal-close" onclick="closeLineModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="line-modal-info">
+        <!-- Details dynamically compiled -->
+      </div>
+      <div class="modal-footer" id="line-modal-actions">
+        <!-- Buttons injected -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- JavaScript Scripts Inclusion -->
+  <script src="demoData.js"></script>
+  <script src="app.js"></script>
+  
+  <script>
+    // Prefill form dates on load
+    document.getElementById("sow-date").value = new Date().toISOString().split('T')[0];
+    document.getElementById("tx-date").value = new Date().toISOString().split('T')[0];
+    document.getElementById("hrv-date").value = new Date().toISOString().split('T')[0];
+  </script>
+</body>
+</html>
