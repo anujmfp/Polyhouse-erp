@@ -713,6 +713,7 @@ function triggerQuickAction(row, line, stage) {
       date: log.date,
       row: log.row,
       line: log.line,
+      batch: activeTx.batchId || activeTx.trayBatchId,
       stage: log.stage,
       yield_kg: log.yieldKg,
       waste_kg: log.wasteKg
@@ -854,12 +855,17 @@ function setupFormHandlers() {
     const totalPlantsPlanted = towersPlanted * plantsPerTower;
     
     // Register transplant
+    const cropInit = sourceBatch.crop.substring(0, 3).toUpperCase();
+    const dateParts = txDateStr.split("-");
+    const generatedBatchId = `${cropInit}${dateParts[2]}${dateParts[1]}`;
+    
     const newTx = {
       id: "TX-" + (appState.transplantLogs.length + 1),
       date: txDateStr,
       row,
       line,
       trayBatchId: batchId,
+      batchId: generatedBatchId,
       towersPlanted,
       plantsPlanted: totalPlantsPlanted,
       crop: sourceBatch.crop,
@@ -879,7 +885,7 @@ function setupFormHandlers() {
       date: txDateStr,
       row,
       line,
-      batch: batchId,
+      batch: generatedBatchId,
       towers: towersPlanted
     };
     postToSupabase(payload).then(dbId => {
@@ -950,6 +956,7 @@ function setupFormHandlers() {
       date: hrvDateStr,
       row: row,
       line: line,
+      batch: activeTx.batchId || activeTx.trayBatchId,
       stage: stage,
       yield_kg: yieldKg,
       waste_kg: wasteKg

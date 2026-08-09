@@ -274,8 +274,14 @@
           </div>
         </div>
         <div class="form-group">
-          <label for="m-tx-batch">Source Sowing Batch ID</label>
-          <input type="text" id="m-tx-batch" placeholder="e.g. SOW-5">
+          <label for="m-tx-crop">Select Crop Variety</label>
+          <select id="m-tx-crop" onchange="updateGeneratedBatchId()">
+            <!-- Populated dynamically -->
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Generated Batch ID</label>
+          <div id="m-tx-batch-display" style="padding: 10px 14px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 10px; font-weight: 700; color: var(--accent); font-family: monospace;">-</div>
         </div>
         <div class="form-group">
           <label for="m-tx-towers">Towers Transplanted (Max 63)</label>
@@ -301,6 +307,10 @@
             <button type="button" class="line-btn active" id="btn-hrv-line-A" onclick="setLine('hrv', 'A')">Line A</button>
             <button type="button" class="line-btn" id="btn-hrv-line-B" onclick="setLine('hrv', 'B')">Line B</button>
           </div>
+        </div>
+        <div class="form-group">
+          <label>Active Growing Crop Info</label>
+          <div id="m-hrv-active-info" style="padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 10px; font-size: 0.85rem; font-weight: 500;">Please select row/line</div>
         </div>
         <div class="form-group">
           <label for="m-hrv-stage">Stage Cut</label>
@@ -385,6 +395,102 @@
     let activeOperation = "sowing";
     let selectedRow = { transplant: 1, harvest: 1, clear: 1 };
     let selectedLine = { transplant: 'A', harvest: 'A', clear: 'A' };
+    
+    let generatedTxBatchId = "";
+    let activeHarvestDetails = null;
+
+    function updateGeneratedBatchId() {
+      const cropSelect = document.getElementById("m-tx-crop");
+      const dateInput = document.getElementById("m-date");
+      const displayEl = document.getElementById("m-tx-batch-display");
+      
+      if (!cropSelect || !dateInput || !displayEl) return;
+      
+      const crop = cropSelect.value;
+      const dateVal = dateInput.value; // YYYY-MM-DD
+      
+      if (!crop || !dateVal) {
+        displayEl.innerText = "Waiting for crop/date...";
+        generatedTxBatchId = "";
+        return;
+      }
+      
+      const cropInit = crop.substring(0, 3).toUpperCase();
+      const dateParts = dateVal.split("-");
+      const day = dateParts[2];
+      const month = dateParts[1];
+      
+      generatedTxBatchId = `${cropInit}${day}${month}`;
+      displayEl.innerText = generatedTxBatchId;
+    }
+
+    async function updateActiveCropForHarvest() {
+      const row = selectedRow.harvest;
+      const line = selectedLine.harvest;
+      const infoDiv = document.getElementById("m-hrv-active-info");
+      if (!infoDiv) return;
+      
+      infoDiv.innerHTML = "Checking growing crop...";
+      infoDiv.style.color = "var(--text-muted)";
+      
+      if (!cloudConfig.url || !cloudConfig.key) {
+        infoDiv.innerHTML = "Offline fallback: Ready (Manually check dashboard)";
+        infoDiv.style.color = "var(--text-secondary)";
+        activeHarvestDetails = { crop: "Unknown Crop", batch: "OFFLINE" };
+        return;
+      }
+      
+      try {
+        const cleanUrl = cloudConfig.url.endsWith('/') ? cloudConfig.url : cloudConfig.url + '/';
+        const endpoint = `${cleanUrl}rest/v1/polyhouse_logs?row=eq.${row}&line=eq.${line}&type=eq.transplant&order=date.desc&limit=1`;
+        
+        const res = await fetch(endpoint, {
+          headers: {
+            'apikey': cloudConfig.key,
+            'Authorization': `Bearer ${cloudConfig.key}`
+          }
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.length > 0) {
+            const lastTx = data[0];
+            
+            // Check clearance
+            const clearEndpoint = `${cleanUrl}rest/v1/polyhouse_logs?row=eq.${row}&line=eq.${line}&type=eq.clear&date=gte.${lastTx.date}&order=date.desc&limit=1`;
+            const clearRes = await fetch(clearEndpoint, {
+              headers: {
+                'apikey': cloudConfig.key,
+                'Authorization': `Bearer ${cloudConfig.key}`
+              }
+            });
+            
+            let isCleared = false;
+            if (clearRes.ok) {
+              const clearData = await clearRes.json();
+              if (clearData && clearData.length > 0) {
+                isCleared = true;
+              }
+            }
+            
+            if (!isCleared) {
+              infoDiv.innerHTML = `Growing: <strong>${lastTx.crop}</strong> | Batch: <strong>${lastTx.batch}</strong>`;
+              infoDiv.style.color = "var(--accent)";
+              activeHarvestDetails = { crop: lastTx.crop, batch: lastTx.batch };
+              return;
+            }
+          }
+        }
+        infoDiv.innerHTML = "No active crop found on this line (Empty).";
+        infoDiv.style.color = "#f87171";
+        activeHarvestDetails = null;
+      } catch (e) {
+        console.error("Error looking up active crop:", e);
+        infoDiv.innerHTML = "Sync error: Defaulting to manual lookup";
+        infoDiv.style.color = "var(--text-secondary)";
+        activeHarvestDetails = { crop: "Unknown Crop", batch: "ERROR" };
+      }
+    }
 
     document.addEventListener("DOMContentLoaded", () => {
       // Default to today
@@ -398,6 +504,14 @@
       
       // Update UI elements from settings
       initializeFormOptions();
+      
+      // Bind date picker listener
+      document.getElementById("m-date").addEventListener("input", () => {
+        updateGeneratedBatchId();
+        if (activeOperation === "harvest") {
+          updateActiveCropForHarvest();
+        }
+      });
     });
 
     function parseQueryParams() {
@@ -431,6 +545,9 @@
             document.querySelectorAll(`#picker-${pickerId}-row .picker-btn`).forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             selectedRow[mode] = r;
+            if (mode === 'harvest') {
+              updateActiveCropForHarvest();
+            }
           };
           picker.appendChild(btn);
         }
@@ -443,6 +560,10 @@
       
       document.getElementById(`btn-${mode}-line-A`).classList.toggle('active', line === 'A');
       document.getElementById(`btn-${mode}-line-B`).classList.toggle('active', line === 'B');
+      
+      if (prefix === 'harvest') {
+        updateActiveCropForHarvest();
+      }
     }
 
     function initializeFormOptions() {
@@ -453,11 +574,18 @@
         empSelect.innerHTML += `<option value="${emp}">${emp}</option>`;
       });
 
-      // 2. Populate crops
+      // 2. Populate sowing crops
       const cropSelect = document.getElementById("m-sow-crop");
       cropSelect.innerHTML = "";
       cloudConfig.crops.forEach(crop => {
         cropSelect.innerHTML += `<option value="${crop}">${crop}</option>`;
+      });
+      
+      // Populate transplant crops
+      const txCropSelect = document.getElementById("m-tx-crop");
+      txCropSelect.innerHTML = "";
+      cloudConfig.crops.forEach(crop => {
+        txCropSelect.innerHTML += `<option value="${crop}">${crop}</option>`;
       });
 
       // 3. Toggle cloud connection views
@@ -479,6 +607,9 @@
         submitBtn.innerText = "Submit via WhatsApp";
         submitBtn.className = "btn-primary btn-whatsapp";
       }
+      
+      // Fire generation
+      updateGeneratedBatchId();
     }
 
     function selectOperation(op) {
@@ -491,6 +622,10 @@
       document.getElementById("section-transplant").style.display = op === 'transplant' ? 'block' : 'none';
       document.getElementById("section-harvest").style.display = op === 'harvest' ? 'block' : 'none';
       document.getElementById("section-clear").style.display = op === 'clear' ? 'block' : 'none';
+      
+      if (op === 'harvest') {
+        updateActiveCropForHarvest();
+      }
     }
 
     function buildMessageString() {
@@ -508,15 +643,15 @@
       } else if (activeOperation === "transplant") {
         const row = selectedRow.transplant;
         const line = selectedLine.transplant;
-        const batch = document.getElementById("m-tx-batch").value.trim();
+        const crop = document.getElementById("m-tx-crop").value;
         const towers = document.getElementById("m-tx-towers").value;
         
-        if (!batch) {
-          alert("Please specify the Source Sowing Batch ID");
+        if (!generatedTxBatchId) {
+          alert("Unable to generate Batch ID. Verify date.");
           return null;
         }
         
-        msg += `TRANSPLANT | Row: ${row} | Line: ${line} | Batch: ${batch} | Towers: ${towers} | Date: ${date} | Employee: ${employee}`;
+        msg += `TRANSPLANT | Row: ${row} | Line: ${line} | Crop: ${crop} | Batch: ${generatedTxBatchId} | Towers: ${towers} | Date: ${date} | Employee: ${employee}`;
       } else if (activeOperation === "harvest") {
         const row = selectedRow.harvest;
         const line = selectedLine.harvest;
@@ -524,12 +659,16 @@
         const yieldKg = document.getElementById("m-hrv-yield").value;
         const wasteKg = document.getElementById("m-hrv-waste").value || 0;
         
+        if (!activeHarvestDetails) {
+          alert("Cannot log harvest: No active crop found growing on Row " + row + " Line " + line);
+          return null;
+        }
         if (!yieldKg) {
           alert("Please enter the harvested yield weight (kg)");
           return null;
         }
         
-        msg += `HARVEST | Row: ${row} | Line: ${line} | Stage: ${stage} | Yield: ${yieldKg} | Waste: ${wasteKg} | Date: ${date} | Employee: ${employee}`;
+        msg += `HARVEST | Row: ${row} | Line: ${line} | Crop: ${activeHarvestDetails.crop} | Batch: ${activeHarvestDetails.batch} | Stage: ${stage} | Yield: ${yieldKg} | Waste: ${wasteKg} | Date: ${date} | Employee: ${employee}`;
       } else if (activeOperation === "clear") {
         const row = selectedRow.clear;
         const line = selectedLine.clear;
@@ -575,11 +714,14 @@
         } else if (actionType === "transplant") {
           payload.row = selectedRow.transplant;
           payload.line = selectedLine.transplant;
-          payload.batch = document.getElementById("m-tx-batch").value.trim().toUpperCase();
+          payload.crop = document.getElementById("m-tx-crop").value;
+          payload.batch = generatedTxBatchId;
           payload.towers = parseInt(document.getElementById("m-tx-towers").value);
         } else if (actionType === "harvest") {
           payload.row = selectedRow.harvest;
           payload.line = selectedLine.harvest;
+          payload.crop = activeHarvestDetails.crop;
+          payload.batch = activeHarvestDetails.batch;
           payload.stage = document.getElementById("m-hrv-stage").value;
           payload.yield_kg = parseFloat(document.getElementById("m-hrv-yield").value);
           payload.waste_kg = parseFloat(document.getElementById("m-hrv-waste").value || 0);
@@ -613,10 +755,12 @@
         if (actionType === "sowing") {
           document.getElementById("m-sow-trays").value = 50;
         } else if (actionType === "transplant") {
-          document.getElementById("m-tx-batch").value = "";
+          // Fire generation
+          updateGeneratedBatchId();
         } else if (actionType === "harvest") {
           document.getElementById("m-hrv-yield").value = "";
           document.getElementById("m-hrv-waste").value = 0;
+          updateActiveCropForHarvest();
         }
 
       } catch (err) {
