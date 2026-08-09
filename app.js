@@ -668,6 +668,20 @@ function triggerQuickAction(row, line, stage) {
       };
       
       appState.clearLogs.push(log);
+      const payload = {
+        type: "clear",
+        logged_by: "Manager",
+        date: log.date,
+        row: log.row,
+        line: log.line,
+        reason: log.reason
+      };
+      postToSupabase(payload).then(dbId => {
+        if (dbId) {
+          log.supabaseId = dbId;
+          saveState();
+        }
+      });
       
       // Update matching transplant status to completed
       if (activeTx) {
@@ -693,6 +707,22 @@ function triggerQuickAction(row, line, stage) {
       loggedBy: "Manager"
     };
     appState.harvestLogs.push(log);
+    const payload = {
+      type: "harvest",
+      logged_by: "Manager",
+      date: log.date,
+      row: log.row,
+      line: log.line,
+      stage: log.stage,
+      yield_kg: log.yieldKg,
+      waste_kg: log.wasteKg
+    };
+    postToSupabase(payload).then(dbId => {
+      if (dbId) {
+        log.supabaseId = dbId;
+        saveState();
+      }
+    });
     saveState();
     refreshAll();
     showToast(`Logged Shenda cut for Row ${row} Line ${line}.`, "success");
@@ -765,6 +795,21 @@ function setupFormHandlers() {
     
     appState.sowingLogs.push(newLog);
     saveState();
+    
+    const payload = {
+      type: "sowing",
+      logged_by: "Manager",
+      date: sowDateStr,
+      crop: crop,
+      sow_type: type,
+      trays: trayCount
+    };
+    postToSupabase(payload).then(dbId => {
+      if (dbId) {
+        newLog.supabaseId = dbId;
+        saveState();
+      }
+    });
     sowingForm.reset();
     document.getElementById("sow-date").value = new Date().toISOString().split('T')[0];
     
@@ -827,6 +872,22 @@ function setupFormHandlers() {
     
     appState.transplantLogs.push(newTx);
     saveState();
+    
+    const payload = {
+      type: "transplant",
+      logged_by: "Manager",
+      date: txDateStr,
+      row,
+      line,
+      batch: batchId,
+      towers: towersPlanted
+    };
+    postToSupabase(payload).then(dbId => {
+      if (dbId) {
+        newTx.supabaseId = dbId;
+        saveState();
+      }
+    });
     transplantForm.reset();
     document.getElementById("tx-date").value = new Date().toISOString().split('T')[0];
     
@@ -881,9 +942,24 @@ function setupFormHandlers() {
     };
     
     appState.harvestLogs.push(newHrv);
-    
-    // Save State
     saveState();
+    
+    const payload = {
+      type: "harvest",
+      logged_by: "Manager",
+      date: hrvDateStr,
+      row: row,
+      line: line,
+      stage: stage,
+      yield_kg: yieldKg,
+      waste_kg: wasteKg
+    };
+    postToSupabase(payload).then(dbId => {
+      if (dbId) {
+        newHrv.supabaseId = dbId;
+        saveState();
+      }
+    });
     harvestForm.reset();
     document.getElementById("hrv-date").value = new Date().toISOString().split('T')[0];
     
@@ -996,26 +1072,33 @@ function deleteLog(type, id) {
     return;
   }
   
+  let targetLog = null;
   if (type === "Sowing") {
+    targetLog = appState.sowingLogs.find(s => s.id === id);
     appState.sowingLogs = appState.sowingLogs.filter(s => s.id !== id);
   } else if (type === "Transplant") {
-    // If we delete transplant, we must restore the status of its source sowing batch
     const tx = appState.transplantLogs.find(t => t.id === id);
     if (tx) {
+      targetLog = tx;
       const sow = appState.sowingLogs.find(s => s.id === tx.trayBatchId);
       if (sow) sow.status = "ready";
     }
     appState.transplantLogs = appState.transplantLogs.filter(t => t.id !== id);
   } else if (type === "Harvest") {
+    targetLog = appState.harvestLogs.find(h => h.id === id);
     appState.harvestLogs = appState.harvestLogs.filter(h => h.id !== id);
   } else if (type === "Clearance") {
-    // If we delete clearance, we must find the transplant log linked and restore status to active
-    const clr = appState.clearLogs.find(c => c.id !== id);
+    const clr = appState.clearLogs.find(c => c.id === id);
     if (clr) {
+      targetLog = clr;
       const tx = appState.transplantLogs.find(t => t.id === clr.transplantLogId);
       if (tx) tx.status = "active";
     }
     appState.clearLogs = appState.clearLogs.filter(c => c.id !== id);
+  }
+  
+  if (targetLog && targetLog.supabaseId) {
+    deleteFromSupabase(targetLog.supabaseId);
   }
   
   saveState();
@@ -1391,6 +1474,19 @@ async function syncWithCloud() {
       
       logsQueue.forEach(log => {
         if (log.type === "sowing") {
+          // Check duplicate
+          const match = appState.sowingLogs.find(s => 
+            s.supabaseId === log.id || 
+            (!s.supabaseId && s.crop === log.crop && s.sowDate === log.date && s.trayCount === log.trays)
+          );
+          if (match) {
+            if (!match.supabaseId) {
+              match.supabaseId = log.id;
+              localStorage.setItem("polyhouse_erp_state", JSON.stringify(appState));
+            }
+            return;
+          }
+          
           const sowDateObj = new Date(log.date);
           const germPeriod = getGerminationPeriod(log.sow_type);
           const readyDateObj = new Date(sowDateObj);
@@ -1404,12 +1500,26 @@ async function syncWithCloud() {
             sowDate: log.date,
             readyDate: readyDateObj.toISOString().split('T')[0],
             status: (new Date() >= readyDateObj) ? "ready" : "germinating",
-            loggedBy: log.logged_by || "System"
+            loggedBy: log.logged_by || "System",
+            supabaseId: log.id
           };
           appState.sowingLogs.push(sowLog);
           mergedCount++;
           
         } else if (log.type === "transplant") {
+          // Check duplicate
+          const match = appState.transplantLogs.find(t => 
+            t.supabaseId === log.id ||
+            (!t.supabaseId && t.row === log.row && t.line === log.line && t.date === log.date && t.trayBatchId === log.batch)
+          );
+          if (match) {
+            if (!match.supabaseId) {
+              match.supabaseId = log.id;
+              localStorage.setItem("polyhouse_erp_state", JSON.stringify(appState));
+            }
+            return;
+          }
+          
           const cap = getLineCapacity(log.row);
           const towersCap = parseInt(appState.settings.towersPerLine);
           const plantsPerTower = cap / towersCap;
@@ -1433,7 +1543,8 @@ async function syncWithCloud() {
             plantsPlanted: (log.towers || 63) * plantsPerTower,
             crop: cropName,
             status: "active",
-            loggedBy: log.logged_by || "System"
+            loggedBy: log.logged_by || "System",
+            supabaseId: log.id
           };
           
           if (sourceBatch) sourceBatch.status = "transplanted";
@@ -1441,6 +1552,19 @@ async function syncWithCloud() {
           mergedCount++;
           
         } else if (log.type === "harvest") {
+          // Check duplicate
+          const match = appState.harvestLogs.find(h => 
+            h.supabaseId === log.id ||
+            (!h.supabaseId && h.row === log.row && h.line === log.line && h.date === log.date && h.stage === log.stage)
+          );
+          if (match) {
+            if (!match.supabaseId) {
+              match.supabaseId = log.id;
+              localStorage.setItem("polyhouse_erp_state", JSON.stringify(appState));
+            }
+            return;
+          }
+          
           const activeTx = appState.transplantLogs.find(t => t.row === log.row && t.line === log.line && t.status === "active");
           const txId = activeTx ? activeTx.id : null;
           const cropName = activeTx ? activeTx.crop : (log.crop || "Unknown Crop");
@@ -1455,12 +1579,26 @@ async function syncWithCloud() {
             yieldKg: log.yield_kg,
             wasteKg: log.waste_kg || 0,
             crop: cropName,
-            loggedBy: log.logged_by || "System"
+            loggedBy: log.logged_by || "System",
+            supabaseId: log.id
           };
           appState.harvestLogs.push(hrvLog);
           mergedCount++;
           
         } else if (log.type === "clear") {
+          // Check duplicate
+          const match = appState.clearLogs.find(c => 
+            c.supabaseId === log.id ||
+            (!c.supabaseId && c.row === log.row && c.line === log.line && c.date === log.date)
+          );
+          if (match) {
+            if (!match.supabaseId) {
+              match.supabaseId = log.id;
+              localStorage.setItem("polyhouse_erp_state", JSON.stringify(appState));
+            }
+            return;
+          }
+          
           const activeTx = appState.transplantLogs.find(t => t.row === log.row && t.line === log.line && t.status === "active");
           const txId = activeTx ? activeTx.id : null;
           
@@ -1471,7 +1609,8 @@ async function syncWithCloud() {
             line: log.line,
             transplantLogId: txId,
             reason: log.reason,
-            loggedBy: log.logged_by || "System"
+            loggedBy: log.logged_by || "System",
+            supabaseId: log.id
           };
           
           if (activeTx) activeTx.status = "completed";
@@ -1485,16 +1624,6 @@ async function syncWithCloud() {
         refreshAll();
         showToast(`Cloud Sync: Synced ${mergedCount} operations from Supabase.`, "success");
       }
-      
-      // Delete queue items from Supabase
-      const deleteEndpoint = `${cleanUrl}rest/v1/polyhouse_logs`;
-      await fetch(deleteEndpoint, {
-        method: 'DELETE',
-        headers: {
-          'apikey': key,
-          'Authorization': `Bearer ${key}`
-        }
-      });
     }
   } catch (err) {
     console.error("Supabase sync detailed error:", err);
@@ -1817,4 +1946,57 @@ function copyMobileLoggerLink() {
   navigator.clipboard.writeText(finalUrl)
     .then(() => showToast("Configured Mobile Logger URL copied to clipboard!", "success"))
     .catch(() => alert("Failed to copy automatically. Please copy the URL below:\n\n" + finalUrl));
+}
+
+async function postToSupabase(payload) {
+  const url = appState.settings.supabaseUrl;
+  const key = appState.settings.supabaseKey;
+  if (!url || !key) return null;
+  
+  try {
+    const cleanUrl = url.endsWith('/') ? url : url + '/';
+    const dbUrl = `${cleanUrl}rest/v1/polyhouse_logs`;
+    
+    const response = await fetch(dbUrl, {
+      method: 'POST',
+      headers: {
+        'apikey': key,
+        'Authorization': `Bearer ${key}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(payload)
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (data && data.length > 0) {
+        return data[0].id;
+      }
+    }
+  } catch (e) {
+    console.error("Failed to post action to Supabase:", e);
+  }
+  return null;
+}
+
+async function deleteFromSupabase(supabaseId) {
+  const url = appState.settings.supabaseUrl;
+  const key = appState.settings.supabaseKey;
+  if (!url || !key || !supabaseId) return;
+  
+  try {
+    const cleanUrl = url.endsWith('/') ? url : url + '/';
+    const deleteEndpoint = `${cleanUrl}rest/v1/polyhouse_logs?id=eq.${supabaseId}`;
+    
+    await fetch(deleteEndpoint, {
+      method: 'DELETE',
+      headers: {
+        'apikey': key,
+        'Authorization': `Bearer ${key}`
+      }
+    });
+  } catch (e) {
+    console.error("Failed to delete from Supabase:", e);
+  }
 }
