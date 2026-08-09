@@ -657,7 +657,8 @@ function triggerQuickAction(row, line, stage) {
         row: parseInt(row),
         line: line,
         transplantLogId: activeTx ? activeTx.id : null,
-        reason: "Normal harvest cycle finished"
+        reason: "Normal harvest cycle finished",
+        loggedBy: "Manager"
       };
       
       appState.clearLogs.push(log);
@@ -682,7 +683,8 @@ function triggerQuickAction(row, line, stage) {
       stage: "Shenda",
       yieldKg: 0, // Shenda is a grooming trim event
       wasteKg: 0,
-      crop: activeTx.crop
+      crop: activeTx.crop,
+      loggedBy: "Manager"
     };
     appState.harvestLogs.push(log);
     saveState();
@@ -751,7 +753,8 @@ function setupFormHandlers() {
       trayCount,
       sowDate: sowDateStr,
       readyDate: readyDate.toISOString().split('T')[0],
-      status
+      status,
+      loggedBy: "Manager"
     };
     
     appState.sowingLogs.push(newLog);
@@ -809,7 +812,8 @@ function setupFormHandlers() {
       towersPlanted,
       plantsPlanted: totalPlantsPlanted,
       crop: sourceBatch.crop,
-      status: "active"
+      status: "active",
+      loggedBy: "Manager"
     };
     
     // Deduct trays or mark batch transplanted
@@ -866,7 +870,8 @@ function setupFormHandlers() {
       stage,
       yieldKg,
       wasteKg,
-      crop: activeTx.crop
+      crop: activeTx.crop,
+      loggedBy: "Manager"
     };
     
     appState.harvestLogs.push(newHrv);
@@ -898,7 +903,7 @@ function renderLogs() {
         date: s.sowDate,
         type: "Sowing",
         crop: s.crop,
-        details: `${s.trayCount} Trays (${s.type}) - Status: ${s.status.toUpperCase()}`,
+        details: `${s.trayCount} Trays (${s.type}) - Status: ${s.status.toUpperCase()} | Employee: ${s.loggedBy || 'Manager'}`,
         raw: s
       });
     });
@@ -912,7 +917,7 @@ function renderLogs() {
         date: t.date,
         type: "Transplant",
         crop: t.crop,
-        details: `Row ${t.row} Line ${t.line} | ${t.towersPlanted} Towers (${t.plantsPlanted} plants) | Batch: ${t.trayBatchId} [${t.status}]`,
+        details: `Row ${t.row} Line ${t.line} | ${t.towersPlanted} Towers (${t.plantsPlanted} plants) | Batch: ${t.trayBatchId} [${t.status}] | Employee: ${t.loggedBy || 'Manager'}`,
         raw: t
       });
     });
@@ -926,7 +931,7 @@ function renderLogs() {
         date: h.date,
         type: "Harvest",
         crop: h.crop,
-        details: `Row ${h.row} Line ${h.line} (${h.stage}) | Yield: ${h.yieldKg} kg (Waste: ${h.wasteKg} kg)`,
+        details: `Row ${h.row} Line ${h.line} (${h.stage}) | Yield: ${h.yieldKg} kg (Waste: ${h.wasteKg} kg) | Employee: ${h.loggedBy || 'Manager'}`,
         raw: h
       });
     });
@@ -940,7 +945,7 @@ function renderLogs() {
         date: c.date,
         type: "Clearance",
         crop: "N/A",
-        details: `Row ${c.row} Line ${c.line} cleared. Reason: ${c.reason}`,
+        details: `Row ${c.row} Line ${c.line} cleared. Reason: ${c.reason} | Employee: ${c.loggedBy || 'Manager'}`,
         raw: c
       });
     });
@@ -1390,7 +1395,8 @@ async function syncWithCloud() {
             trayCount: log.trays,
             sowDate: log.date,
             readyDate: readyDateObj.toISOString().split('T')[0],
-            status: (new Date() >= readyDateObj) ? "ready" : "germinating"
+            status: (new Date() >= readyDateObj) ? "ready" : "germinating",
+            loggedBy: log.logged_by || "System"
           };
           appState.sowingLogs.push(sowLog);
           mergedCount++;
@@ -1418,7 +1424,8 @@ async function syncWithCloud() {
             towersPlanted: log.towers || 63,
             plantsPlanted: (log.towers || 63) * plantsPerTower,
             crop: cropName,
-            status: "active"
+            status: "active",
+            loggedBy: log.logged_by || "System"
           };
           
           if (sourceBatch) sourceBatch.status = "transplanted";
@@ -1439,7 +1446,8 @@ async function syncWithCloud() {
             stage: log.stage,
             yieldKg: log.yield_kg,
             wasteKg: log.waste_kg || 0,
-            crop: cropName
+            crop: cropName,
+            loggedBy: log.logged_by || "System"
           };
           appState.harvestLogs.push(hrvLog);
           mergedCount++;
@@ -1454,7 +1462,8 @@ async function syncWithCloud() {
             row: log.row,
             line: log.line,
             transplantLogId: txId,
-            reason: log.reason
+            reason: log.reason,
+            loggedBy: log.logged_by || "System"
           };
           
           if (activeTx) activeTx.status = "completed";
@@ -1678,7 +1687,8 @@ function importParsedLogs() {
           trayCount: item.trays,
           sowDate: item.date,
           readyDate: readyDateObj.toISOString().split('T')[0],
-          status: (new Date() >= readyDateObj) ? "ready" : "germinating"
+          status: (new Date() >= readyDateObj) ? "ready" : "germinating",
+          loggedBy: item.raw.employee || item.raw.worker || "System"
         };
         appState.sowingLogs.push(sowLog);
         importCount++;
@@ -1706,7 +1716,8 @@ function importParsedLogs() {
           towersPlanted: item.towers,
           plantsPlanted: item.towers * plantsPerTower,
           crop: cropName,
-          status: "active"
+          status: "active",
+          loggedBy: item.raw.employee || item.raw.worker || "System"
         };
         
         if (sourceBatch) sourceBatch.status = "transplanted";
@@ -1727,7 +1738,8 @@ function importParsedLogs() {
           stage: item.stage,
           yieldKg: item.yield,
           wasteKg: item.waste,
-          crop: cropName
+          crop: cropName,
+          loggedBy: item.raw.employee || item.raw.worker || "System"
         };
         appState.harvestLogs.push(hrvLog);
         importCount++;
@@ -1742,7 +1754,8 @@ function importParsedLogs() {
           row: item.row,
           line: item.line,
           transplantLogId: txId,
-          reason: item.reason
+          reason: item.reason,
+          loggedBy: item.raw.employee || item.raw.worker || "System"
         };
         
         if (activeTx) activeTx.status = "completed";

@@ -350,13 +350,10 @@
         </div>
       </div>
 
-      <!-- Submit buttons -->
+      <!-- Submit button -->
       <div class="btn-actions-stack">
-        <button type="button" class="btn-primary" id="btn-cloud-submit" onclick="submitLog('cloud')" style="display:none; width: 100%;">
-          Submit to Supabase Cloud
-        </button>
-        <button type="button" class="btn-primary btn-whatsapp" onclick="submitLog('whatsapp')" style="width: 100%;">
-          Submit via WhatsApp
+        <button type="button" class="btn-primary" id="btn-submit" onclick="submitLog()" style="width: 100%;">
+          Submit Operation
         </button>
       </div>
 
@@ -466,19 +463,21 @@
       // 3. Toggle cloud connection views
       const dot = document.getElementById("status-dot");
       const text = document.getElementById("status-text");
-      const cloudSubmitBtn = document.getElementById("btn-cloud-submit");
+      const submitBtn = document.getElementById("btn-submit");
       
       if (cloudConfig.url && cloudConfig.key) {
         dot.style.backgroundColor = "#3b82f6";
         dot.style.boxShadow = "0 0 8px rgba(59, 130, 246, 0.5)";
         text.innerText = "Connected to Supabase Cloud";
         text.style.color = "#93c5fd";
-        cloudSubmitBtn.style.display = "block";
+        submitBtn.innerText = "Submit to Supabase Cloud";
+        submitBtn.className = "btn-primary";
       } else {
         dot.style.backgroundColor = "#10b981";
         text.innerText = "WhatsApp Logging Fallback";
         text.style.color = "var(--text-secondary)";
-        cloudSubmitBtn.style.display = "none";
+        submitBtn.innerText = "Submit via WhatsApp";
+        submitBtn.className = "btn-primary btn-whatsapp";
       }
     }
 
@@ -496,7 +495,7 @@
 
     function buildMessageString() {
       const date = document.getElementById("m-date").value;
-      const worker = document.getElementById("m-employee").value;
+      const employee = document.getElementById("m-employee").value;
       
       let msg = `[ERP-LOG] `;
       
@@ -505,7 +504,7 @@
         const type = document.getElementById("m-sow-type").value;
         const trays = document.getElementById("m-sow-trays").value;
         
-        msg += `SOWING | Crop: ${crop} | Type: ${type} | Trays: ${trays} | Date: ${date} | Worker: ${worker}`;
+        msg += `SOWING | Crop: ${crop} | Type: ${type} | Trays: ${trays} | Date: ${date} | Employee: ${employee}`;
       } else if (activeOperation === "transplant") {
         const row = selectedRow.transplant;
         const line = selectedLine.transplant;
@@ -517,7 +516,7 @@
           return null;
         }
         
-        msg += `TRANSPLANT | Row: ${row} | Line: ${line} | Batch: ${batch} | Towers: ${towers} | Date: ${date} | Worker: ${worker}`;
+        msg += `TRANSPLANT | Row: ${row} | Line: ${line} | Batch: ${batch} | Towers: ${towers} | Date: ${date} | Employee: ${employee}`;
       } else if (activeOperation === "harvest") {
         const row = selectedRow.harvest;
         const line = selectedLine.harvest;
@@ -530,23 +529,24 @@
           return null;
         }
         
-        msg += `HARVEST | Row: ${row} | Line: ${line} | Stage: ${stage} | Yield: ${yieldKg} | Waste: ${wasteKg} | Date: ${date} | Worker: ${worker}`;
+        msg += `HARVEST | Row: ${row} | Line: ${line} | Stage: ${stage} | Yield: ${yieldKg} | Waste: ${wasteKg} | Date: ${date} | Employee: ${employee}`;
       } else if (activeOperation === "clear") {
         const row = selectedRow.clear;
         const line = selectedLine.clear;
         const reason = document.getElementById("m-clr-reason").value;
         
-        msg += `CLEAR | Row: ${row} | Line: ${line} | Reason: ${reason} | Date: ${date} | Worker: ${worker}`;
+        msg += `CLEAR | Row: ${row} | Line: ${line} | Reason: ${reason} | Date: ${date} | Employee: ${employee}`;
       }
       
       return msg;
     }
 
-    async function submitLog(target) {
+    async function submitLog() {
       const msg = buildMessageString();
       if (!msg) return; // validation failed
       
-      if (target === "whatsapp") {
+      // If Supabase is NOT configured, automatically run WhatsApp fallback
+      if (!cloudConfig.url || !cloudConfig.key) {
         const url = `https://wa.me/${cloudConfig.phone}?text=${encodeURIComponent(msg)}`;
         window.open(url, '_blank');
         showToast("WhatsApp launched with pre-filled template!", "success");
@@ -554,11 +554,6 @@
       }
 
       // Handle Supabase Cloud Submission
-      if (!cloudConfig.url || !cloudConfig.key) {
-        showToast("Supabase is not configured.", "danger");
-        return;
-      }
-
       const statusBanner = document.getElementById("status-text");
       statusBanner.innerText = "Submitting log to cloud...";
       
@@ -612,7 +607,7 @@
           throw new Error(`Server returned ${response.status}: ${response.statusText}`);
         }
 
-        showToast("Log submitted to Supabase queue!", "success");
+        showToast("Log submitted directly to Supabase queue!", "success");
         
         // Reset dynamic field values on success
         if (actionType === "sowing") {
