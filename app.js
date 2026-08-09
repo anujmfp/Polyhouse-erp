@@ -19,11 +19,11 @@ let appState = {
     harvestIntervalDays: 25,
     totalHarvests: 3,
     defaultExpectedYieldPerPlant: 0.15, // kg
-    cropCatalog: ["Romaine Lettuce", "Butterhead Lettuce", "Spinach", "Basil", "Coriander"],
+    cropCatalog: ["Basil", "Mint", "Oregano", "Coriander", "Centella"],
     supabaseUrl: "",
     supabaseKey: "",
     whatsappPhone: "",
-    employeeCatalog: ["John", "Maria", "Alex", "David", "Sanjay"]
+    employeeCatalog: ["Divyesh", "Satyam", "Anuj"]
   },
   sowingLogs: [],
   transplantLogs: [],
@@ -60,11 +60,29 @@ function initStorage() {
     try {
       appState = JSON.parse(stored);
       // Ensure cloud settings structure exists
-      if (!appState.settings.supabaseUrl) appState.settings.supabaseUrl = "";
-      if (!appState.settings.supabaseKey) appState.settings.supabaseKey = "";
-      if (!appState.settings.whatsappPhone) appState.settings.whatsappPhone = "";
-      if (!appState.settings.employeeCatalog) appState.settings.employeeCatalog = ["John", "Maria", "Alex", "David", "Sanjay"];
-      showToast("Data loaded from browser memory.", "success");
+      let needsSave = false;
+      if (!appState.settings.supabaseUrl) { appState.settings.supabaseUrl = ""; needsSave = true; }
+      if (!appState.settings.supabaseKey) { appState.settings.supabaseKey = ""; needsSave = true; }
+      if (!appState.settings.whatsappPhone) { appState.settings.whatsappPhone = ""; needsSave = true; }
+      if (!appState.settings.employeeCatalog) { 
+        appState.settings.employeeCatalog = ["Divyesh", "Satyam", "Anuj"]; 
+        needsSave = true; 
+      }
+      
+      // Auto-migrate old default catalogs if they are still matching placeholders
+      if (appState.settings.cropCatalog && appState.settings.cropCatalog.includes("Romaine Lettuce")) {
+        appState.settings.cropCatalog = ["Basil", "Mint", "Oregano", "Coriander", "Centella"];
+        needsSave = true;
+      }
+      if (appState.settings.employeeCatalog && appState.settings.employeeCatalog.includes("John")) {
+        appState.settings.employeeCatalog = ["Divyesh", "Satyam", "Anuj"];
+        needsSave = true;
+      }
+      
+      if (needsSave) {
+        localStorage.setItem("polyhouse_erp_state", JSON.stringify(appState));
+      }
+      showToast("Data loaded and migrated from browser memory.", "success");
     } catch (e) {
       console.error("Error reading localStorage, resetting to default config", e);
       saveState();
@@ -85,7 +103,9 @@ function saveState() {
 
 function loadDemoData() {
   if (confirm("Are you sure you want to load mock data? This will overwrite your current logs.")) {
+    const currentSettings = JSON.parse(JSON.stringify(appState.settings)); // Deep copy settings
     appState = DemoDataGenerator.generate();
+    appState.settings = currentSettings; // Restore settings
     saveState();
     refreshAll();
     showToast("Realistic historical demo data loaded successfully!", "success");
