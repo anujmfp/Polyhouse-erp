@@ -992,7 +992,7 @@ function renderLogs() {
         date: s.sowDate,
         type: "Sowing",
         crop: s.crop,
-        details: `${s.trayCount} Trays (${s.type}) - Status: ${s.status.toUpperCase()} | Employee: ${s.loggedBy || 'Manager'}`,
+        details: `${s.trayCount} Trays (${s.type}) - Status: ${s.status.toUpperCase()} | Employee: ${s.loggedBy || 'Manager'}${s.remarks ? ` | Remarks: ${s.remarks}` : ''}`,
         raw: s
       });
     });
@@ -1006,7 +1006,7 @@ function renderLogs() {
         date: t.date,
         type: "Transplant",
         crop: t.crop,
-        details: `Row ${t.row} Line ${t.line} | ${t.towersPlanted} Towers (${t.plantsPlanted} plants) | Batch: ${t.trayBatchId} [${t.status}] | Employee: ${t.loggedBy || 'Manager'}`,
+        details: `Row ${t.row} Line ${t.line} | ${t.towersPlanted} Towers (${t.plantsPlanted} plants) | Batch: ${t.trayBatchId} [${t.status}] | Employee: ${t.loggedBy || 'Manager'}${t.remarks ? ` | Remarks: ${t.remarks}` : ''}`,
         raw: t
       });
     });
@@ -1020,7 +1020,7 @@ function renderLogs() {
         date: h.date,
         type: "Harvest",
         crop: h.crop,
-        details: `Row ${h.row} Line ${h.line} (${h.stage}) | Yield: ${h.yieldKg} kg (Waste: ${h.wasteKg} kg) | Employee: ${h.loggedBy || 'Manager'}`,
+        details: `Row ${h.row} Line ${h.line} (${h.stage}) | Yield: ${h.yieldKg} kg (Waste: ${h.wasteKg} kg) | Employee: ${h.loggedBy || 'Manager'}${h.remarks ? ` | Remarks: ${h.remarks}` : ''}`,
         raw: h
       });
     });
@@ -1508,7 +1508,8 @@ async function syncWithCloud() {
             readyDate: readyDateObj.toISOString().split('T')[0],
             status: (new Date() >= readyDateObj) ? "ready" : "germinating",
             loggedBy: log.logged_by || "System",
-            supabaseId: log.id
+            supabaseId: log.id,
+            remarks: log.reason || ""
           };
           appState.sowingLogs.push(sowLog);
           mergedCount++;
@@ -1551,7 +1552,8 @@ async function syncWithCloud() {
             crop: cropName,
             status: "active",
             loggedBy: log.logged_by || "System",
-            supabaseId: log.id
+            supabaseId: log.id,
+            remarks: log.reason || ""
           };
           
           if (sourceBatch) sourceBatch.status = "transplanted";
@@ -1587,7 +1589,8 @@ async function syncWithCloud() {
             wasteKg: log.waste_kg || 0,
             crop: cropName,
             loggedBy: log.logged_by || "System",
-            supabaseId: log.id
+            supabaseId: log.id,
+            remarks: log.reason || ""
           };
           appState.harvestLogs.push(hrvLog);
           mergedCount++;
@@ -1832,7 +1835,8 @@ function importParsedLogs() {
           sowDate: item.date,
           readyDate: readyDateObj.toISOString().split('T')[0],
           status: (new Date() >= readyDateObj) ? "ready" : "germinating",
-          loggedBy: item.raw.employee || item.raw.worker || "System"
+          loggedBy: item.raw.employee || item.raw.worker || "System",
+          remarks: item.raw.remarks || item.raw.remark || ""
         };
         appState.sowingLogs.push(sowLog);
         importCount++;
@@ -1861,7 +1865,8 @@ function importParsedLogs() {
           plantsPlanted: item.towers * plantsPerTower,
           crop: cropName,
           status: "active",
-          loggedBy: item.raw.employee || item.raw.worker || "System"
+          loggedBy: item.raw.employee || item.raw.worker || "System",
+          remarks: item.raw.remarks || item.raw.remark || ""
         };
         
         if (sourceBatch) sourceBatch.status = "transplanted";
@@ -1883,7 +1888,8 @@ function importParsedLogs() {
           yieldKg: item.yield,
           wasteKg: item.waste,
           crop: cropName,
-          loggedBy: item.raw.employee || item.raw.worker || "System"
+          loggedBy: item.raw.employee || item.raw.worker || "System",
+          remarks: item.raw.remarks || item.raw.remark || ""
         };
         appState.harvestLogs.push(hrvLog);
         importCount++;
@@ -1898,7 +1904,7 @@ function importParsedLogs() {
           row: item.row,
           line: item.line,
           transplantLogId: txId,
-          reason: item.reason,
+          reason: item.reason + (item.raw.remarks || item.raw.remark ? " - " + (item.raw.remarks || item.raw.remark) : ""),
           loggedBy: item.raw.employee || item.raw.worker || "System"
         };
         

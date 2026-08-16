@@ -360,6 +360,12 @@
         </div>
       </div>
 
+      <!-- Remark / Notes -->
+      <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 16px; margin-top: 16px;">
+        <label for="m-remark">Other / Remark (Optional)</label>
+        <textarea id="m-remark" placeholder="Enter any extra details or observations..." rows="3" style="width: 100%; min-height: 80px;"></textarea>
+      </div>
+
       <!-- Submit button -->
       <div class="btn-actions-stack">
         <button type="button" class="btn-primary" id="btn-submit" onclick="submitLog()" style="width: 100%;">
@@ -522,7 +528,7 @@
       
       const cropsStr = params.get("crops");
       if (cropsStr) cloudConfig.crops = cropsStr.split(",");
-      else cloudConfig.crops = ["Romaine Lettuce", "Butterhead Lettuce", "Spinach", "Basil", "Coriander"];
+      else cloudConfig.crops = ["Basil", "Mint", "Oregano", "Coriander", "Centella", "Lettuce"];
       
       const empsStr = params.get("emps");
       if (empsStr) cloudConfig.emps = empsStr.split(",");
@@ -631,6 +637,7 @@
     function buildMessageString() {
       const date = document.getElementById("m-date").value;
       const employee = document.getElementById("m-employee").value;
+      const remark = document.getElementById("m-remark").value.trim();
       
       let msg = `[ERP-LOG] `;
       
@@ -677,6 +684,10 @@
         msg += `CLEAR | Row: ${row} | Line: ${line} | Reason: ${reason} | Date: ${date} | Employee: ${employee}`;
       }
       
+      if (remark) {
+        msg += ` | Remarks: ${remark}`;
+      }
+      
       return msg;
     }
 
@@ -700,6 +711,7 @@
         // Parse parts into object fields matching database columns
         const parts = msg.replace("[ERP-LOG] ", "").split("|");
         const actionType = parts[0].trim().toLowerCase();
+        const remark = document.getElementById("m-remark").value.trim();
         
         const payload = {
           type: actionType,
@@ -711,12 +723,14 @@
           payload.crop = document.getElementById("m-sow-crop").value;
           payload.sow_type = document.getElementById("m-sow-type").value;
           payload.trays = parseInt(document.getElementById("m-sow-trays").value);
+          payload.reason = remark;
         } else if (actionType === "transplant") {
           payload.row = selectedRow.transplant;
           payload.line = selectedLine.transplant;
           payload.crop = document.getElementById("m-tx-crop").value;
           payload.batch = generatedTxBatchId;
           payload.towers = parseInt(document.getElementById("m-tx-towers").value);
+          payload.reason = remark;
         } else if (actionType === "harvest") {
           payload.row = selectedRow.harvest;
           payload.line = selectedLine.harvest;
@@ -725,10 +739,11 @@
           payload.stage = document.getElementById("m-hrv-stage").value;
           payload.yield_kg = parseFloat(document.getElementById("m-hrv-yield").value);
           payload.waste_kg = parseFloat(document.getElementById("m-hrv-waste").value || 0);
+          payload.reason = remark;
         } else if (actionType === "clear") {
           payload.row = selectedRow.clear;
           payload.line = selectedLine.clear;
-          payload.reason = document.getElementById("m-clr-reason").value;
+          payload.reason = document.getElementById("m-clr-reason").value + (remark ? " - " + remark : "");
         }
 
         const cleanUrl = cloudConfig.url.endsWith('/') ? cloudConfig.url : cloudConfig.url + '/';
@@ -750,6 +765,9 @@
         }
 
         showToast("Log submitted directly to Supabase queue!", "success");
+        
+        // Clear remark
+        document.getElementById("m-remark").value = "";
         
         // Reset dynamic field values on success
         if (actionType === "sowing") {
