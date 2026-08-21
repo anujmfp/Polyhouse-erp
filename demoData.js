@@ -18,8 +18,7 @@ const DemoDataGenerator = (() => {
     const state = {
       settings: {
         rows: 19,
-        linesPerRow: 2,
-        towersPerLine: 63,
+        towersPerLine: 126,
         rows1to7Holders: 10,
         rows1to7PlantsPerHolder: 4,
         rows8to19Holders: 15,
@@ -43,7 +42,7 @@ const DemoDataGenerator = (() => {
 
     // Helper to calculate capacity
     const getCapacity = (row) => {
-      const towers = state.settings.towersPerLine; // 63
+      const towers = state.settings.towersPerLine; // 126
       const holders = row <= 7 ? state.settings.rows1to7Holders : state.settings.rows8to19Holders;
       const pph = row <= 7 ? state.settings.rows1to7PlantsPerHolder : state.settings.rows8to19PlantsPerHolder;
       return towers * holders * pph;
@@ -60,7 +59,7 @@ const DemoDataGenerator = (() => {
       id: "SOW-" + sowingIdCounter++,
       crop: crops[0], // Romaine Lettuce
       type: "seed",
-      trayCount: 150, // 150 * 40 = 6000 plants capacity
+      trayCount: 300, // 300 * 40 = 12000 plants capacity
       sowDate: sowDate1,
       readyDate: readyDate1,
       status: "transplanted"
@@ -73,7 +72,7 @@ const DemoDataGenerator = (() => {
       id: "SOW-" + sowingIdCounter++,
       crop: crops[1], // Butterhead Lettuce
       type: "sapling",
-      trayCount: 100,
+      trayCount: 200,
       sowDate: sowDate2,
       readyDate: readyDate2,
       status: "transplanted"
@@ -86,7 +85,7 @@ const DemoDataGenerator = (() => {
       id: "SOW-" + sowingIdCounter++,
       crop: crops[2], // Spinach
       type: "seed",
-      trayCount: 120,
+      trayCount: 240,
       sowDate: sowDate3,
       readyDate: readyDate3,
       status: "transplanted"
@@ -99,7 +98,7 @@ const DemoDataGenerator = (() => {
       id: "SOW-" + sowingIdCounter++,
       crop: crops[3], // Basil
       type: "sapling",
-      trayCount: 80,
+      trayCount: 160,
       sowDate: sowDate4,
       readyDate: readyDate4,
       status: "transplanted"
@@ -131,15 +130,14 @@ const DemoDataGenerator = (() => {
       status: "germinating"
     });
 
-    // Transplant Row 1 Line A (Active, finished Harvest 1 & 2, ready for Harvest 3 today)
+    // Transplant Row 1 (Active, finished Harvest 1 & 2, ready for Harvest 3 today)
     const t1 = {
       id: "TX-" + transplantIdCounter++,
       date: getDateOffset(-75),
       row: 1,
-      line: "A",
       trayBatchId: "SOW-1",
-      towersPlanted: 63,
-      plantsPlanted: 2520,
+      towersPlanted: 126,
+      plantsPlanted: 5040,
       crop: crops[0],
       status: "active"
     };
@@ -149,92 +147,41 @@ const DemoDataGenerator = (() => {
       id: "HRV-" + harvestIdCounter++,
       date: getDateOffset(-60),
       row: 1,
-      line: "A",
       transplantLogId: t1.id,
       stage: "Shenda",
       yieldKg: 0,
-      wasteKg: 2,
+      wasteKg: 3,
       crop: crops[0]
     });
     state.harvestLogs.push({
       id: "HRV-" + harvestIdCounter++,
       date: getDateOffset(-35),
       row: 1,
-      line: "A",
       transplantLogId: t1.id,
       stage: "Harvest 1",
-      yieldKg: 385,
-      wasteKg: 12,
+      yieldKg: 775,
+      wasteKg: 22,
       crop: crops[0]
     });
     state.harvestLogs.push({
       id: "HRV-" + harvestIdCounter++,
       date: getDateOffset(-10),
       row: 1,
-      line: "A",
       transplantLogId: t1.id,
       stage: "Harvest 2",
-      yieldKg: 405,
-      wasteKg: 15,
+      yieldKg: 817,
+      wasteKg: 29,
       crop: crops[0]
     });
 
-    // Row 1 Line B: also transplanted 75 days ago from SOW-1
-    const t2 = {
-      id: "TX-" + transplantIdCounter++,
-      date: getDateOffset(-75),
-      row: 1,
-      line: "B",
-      trayBatchId: "SOW-1",
-      towersPlanted: 63,
-      plantsPlanted: 2520,
-      crop: crops[0],
-      status: "active"
-    };
-    state.transplantLogs.push(t2);
-    state.harvestLogs.push({
-      id: "HRV-" + harvestIdCounter++,
-      date: getDateOffset(-60),
-      row: 1,
-      line: "B",
-      transplantLogId: t2.id,
-      stage: "Shenda",
-      yieldKg: 0,
-      wasteKg: 1,
-      crop: crops[0]
-    });
-    state.harvestLogs.push({
-      id: "HRV-" + harvestIdCounter++,
-      date: getDateOffset(-35),
-      row: 1,
-      line: "B",
-      transplantLogId: t2.id,
-      stage: "Harvest 1",
-      yieldKg: 390,
-      wasteKg: 10,
-      crop: crops[0]
-    });
-    state.harvestLogs.push({
-      id: "HRV-" + harvestIdCounter++,
-      date: getDateOffset(-10),
-      row: 1,
-      line: "B",
-      transplantLogId: t2.id,
-      stage: "Harvest 2",
-      yieldKg: 412,
-      wasteKg: 14,
-      crop: crops[0]
-    });
-
-    // Row 8 Line A (capacity 3780 plants)
+    // Row 8 (capacity 7560 plants, transplanted 71 days ago)
     const t3 = {
       id: "TX-" + transplantIdCounter++,
       date: getDateOffset(-71),
       row: 8,
-      line: "A",
       trayBatchId: "SOW-2",
-      towersPlanted: 63,
-      plantsPlanted: 3780,
+      towersPlanted: 126,
+      plantsPlanted: 7560,
       crop: crops[1],
       status: "active"
     };
@@ -243,45 +190,41 @@ const DemoDataGenerator = (() => {
       id: "HRV-" + harvestIdCounter++,
       date: getDateOffset(-56),
       row: 8,
-      line: "A",
       transplantLogId: t3.id,
       stage: "Shenda",
       yieldKg: 0,
-      wasteKg: 3,
+      wasteKg: 6,
       crop: crops[1]
     });
     state.harvestLogs.push({
       id: "HRV-" + harvestIdCounter++,
       date: getDateOffset(-31),
       row: 8,
-      line: "A",
       transplantLogId: t3.id,
       stage: "Harvest 1",
-      yieldKg: 565,
-      wasteKg: 20,
+      yieldKg: 1130,
+      wasteKg: 40,
       crop: crops[1]
     });
     state.harvestLogs.push({
       id: "HRV-" + harvestIdCounter++,
       date: getDateOffset(-6),
       row: 8,
-      line: "A",
       transplantLogId: t3.id,
       stage: "Harvest 2",
-      yieldKg: 590,
-      wasteKg: 22,
+      yieldKg: 1180,
+      wasteKg: 44,
       crop: crops[1]
     });
 
-    // Row 12 Line A & B transplanted 40 days ago
+    // Row 12 transplanted 40 days ago
     const t4 = {
       id: "TX-" + transplantIdCounter++,
       date: getDateOffset(-40),
       row: 12,
-      line: "A",
       trayBatchId: "SOW-3",
-      towersPlanted: 63,
-      plantsPlanted: 3780,
+      towersPlanted: 80,
+      plantsPlanted: 4800,
       crop: crops[2],
       status: "active"
     };
@@ -290,7 +233,6 @@ const DemoDataGenerator = (() => {
       id: "HRV-" + harvestIdCounter++,
       date: getDateOffset(-25),
       row: 12,
-      line: "A",
       transplantLogId: t4.id,
       stage: "Shenda",
       yieldKg: 0,
@@ -298,39 +240,14 @@ const DemoDataGenerator = (() => {
       crop: crops[2]
     });
 
-    const t5 = {
-      id: "TX-" + transplantIdCounter++,
-      date: getDateOffset(-40),
-      row: 12,
-      line: "B",
-      trayBatchId: "SOW-3",
-      towersPlanted: 17,
-      plantsPlanted: 1020,
-      crop: crops[2],
-      status: "active"
-    };
-    state.transplantLogs.push(t5);
-    state.harvestLogs.push({
-      id: "HRV-" + harvestIdCounter++,
-      date: getDateOffset(-25),
-      row: 12,
-      line: "B",
-      transplantLogId: t5.id,
-      stage: "Shenda",
-      yieldKg: 0,
-      wasteKg: 0,
-      crop: crops[2]
-    });
-
-    // Row 18 Line A sowed 11 days ago
+    // Row 18 sowed 11 days ago
     const t6 = {
       id: "TX-" + transplantIdCounter++,
       date: getDateOffset(-11),
       row: 18,
-      line: "A",
       trayBatchId: "SOW-4",
-      towersPlanted: 53,
-      plantsPlanted: 3180,
+      towersPlanted: 106,
+      plantsPlanted: 6360,
       crop: crops[3],
       status: "active"
     };
@@ -350,10 +267,9 @@ const DemoDataGenerator = (() => {
       id: "TX-OLD1",
       date: getDateOffset(-125),
       row: 4,
-      line: "A",
       trayBatchId: "SOW-OLD1",
-      towersPlanted: 63,
-      plantsPlanted: 2520,
+      towersPlanted: 126,
+      plantsPlanted: 5040,
       crop: crops[4],
       status: "completed"
     };
@@ -362,51 +278,46 @@ const DemoDataGenerator = (() => {
       id: "HRV-OLD1-S",
       date: getDateOffset(-110),
       row: 4,
-      line: "A",
       transplantLogId: tOld.id,
       stage: "Shenda",
       yieldKg: 0,
-      wasteKg: 1,
+      wasteKg: 2,
       crop: crops[4]
     });
     state.harvestLogs.push({
       id: "HRV-OLD1-H1",
       date: getDateOffset(-85),
       row: 4,
-      line: "A",
       transplantLogId: tOld.id,
       stage: "Harvest 1",
-      yieldKg: 360,
-      wasteKg: 15,
+      yieldKg: 720,
+      wasteKg: 30,
       crop: crops[4]
     });
     state.harvestLogs.push({
       id: "HRV-OLD1-H2",
       date: getDateOffset(-60),
       row: 4,
-      line: "A",
       transplantLogId: tOld.id,
       stage: "Harvest 2",
-      yieldKg: 395,
-      wasteKg: 10,
+      yieldKg: 790,
+      wasteKg: 20,
       crop: crops[4]
     });
     state.harvestLogs.push({
       id: "HRV-OLD1-H3",
       date: getDateOffset(-35),
       row: 4,
-      line: "A",
       transplantLogId: tOld.id,
       stage: "Harvest 3",
-      yieldKg: 420,
-      wasteKg: 8,
+      yieldKg: 840,
+      wasteKg: 16,
       crop: crops[4]
     });
     state.clearLogs.push({
       id: "CLR-OLD1",
       date: getDateOffset(-34),
       row: 4,
-      line: "A",
       transplantLogId: tOld.id,
       reason: "Cycle completed (3 harvests done)"
     });

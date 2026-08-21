@@ -6,8 +6,7 @@
 let appState = {
   settings: {
     rows: 19,
-    linesPerRow: 2,
-    towersPerLine: 63,
+    towersPerLine: 126,
     rows1to7Holders: 10,
     rows1to7PlantsPerHolder: 4,
     rows8to19Holders: 15,
@@ -82,6 +81,19 @@ function initStorage() {
         needsSave = true;
       }
       
+      // Layout migration: remove lines, double towers count
+      if (appState.settings.linesPerRow === 2) {
+        appState.settings.towersPerLine = appState.settings.towersPerLine * 2; // 63 * 2 = 126
+        delete appState.settings.linesPerRow;
+        
+        // Strip line references from existing logs
+        appState.transplantLogs.forEach(t => { delete t.line; });
+        appState.harvestLogs.forEach(h => { delete h.line; });
+        appState.clearLogs.forEach(c => { delete c.line; });
+        
+        needsSave = true;
+      }
+      
       if (needsSave) {
         localStorage.setItem("polyhouse_erp_state", JSON.stringify(appState));
       }
@@ -130,7 +142,7 @@ function refreshAll() {
 }
 
 // 2. LIVE METRICS & DATE CALCULATION ENGINE
-function getLineCapacity(row) {
+function getRowCapacity(row) {
   const rowNum = parseInt(row);
   const towers = appState.settings.towersPerLine;
   const holders = rowNum <= 7 ? appState.settings.rows1to7Holders : appState.settings.rows8to19Holders;
@@ -144,10 +156,10 @@ function getGerminationPeriod(type) {
     : parseInt(appState.settings.saplingGerminationDays);
 }
 
-// Compute dynamic line state
-function getLineState(row, line) {
-  // Check if there is an active transplant log for this row/line
-  const activeTx = appState.transplantLogs.find(tx => tx.row === row && tx.line === line && tx.status === "active");
+// Compute dynamic row state
+function getRowState(row) {
+  // Check if there is an active transplant log for this row
+  const activeTx = appState.transplantLogs.find(tx => tx.row === row && tx.status === "active");
   if (!activeTx) {
     return { status: "empty", label: "Empty", colorClass: "state-empty", data: null };
   }
@@ -319,14 +331,14 @@ function renderDashboard() {
   // Initialize plant variety keys from catalog
   appState.settings.cropCatalog.forEach(c => activePlantVarieties[c] = 0);
   
-  // 19 rows * 2 lines map generator
+  // 19 rows map generator
   const mapGridElement = document.getElementById("polyhouse-grid-map");
   mapGridElement.innerHTML = "";
   
   for (let r = 1; r <= parseInt(appState.settings.rows); r++) {
-    const rowCap = getLineCapacity(r); // per line capacity
+    const rowCap = getRowCapacity(r);
     const towersCount = parseInt(appState.settings.towersPerLine);
-    totalTowers += (towersCount * 2);
+    totalTowers += towersCount;
     
     // UI elements for the row
     const rowDiv = document.createElement("div");
@@ -340,79 +352,66 @@ function renderDashboard() {
     const linesWrapper = document.createElement("div");
     linesWrapper.className = "lines-wrapper";
     
-    ["A", "B"].forEach(lineId => {
-      const lineRow = document.createElement("div");
-      lineRow.className = "line-row";
-      
-      const lineLabel = document.createElement("div");
-      lineLabel.className = "line-label";
-      lineLabel.innerText = lineId;
-      lineRow.appendChild(lineLabel);
-      
-      const towersGrid = document.createElement("div");
-      towersGrid.className = "towers-grid";
-      
-      const lineDetails = getLineState(r, lineId);
-      
-      if (lineDetails.status === "empty") {
-        emptyLinesCount++;
-        emptyLinesList.push(`Row ${r} Line ${lineId}`);
-      } else {
-        const tx = lineDetails.data;
-        occupiedTowers += tx.towersPlanted;
-        totalActivePlants += tx.plantsPlanted;
-        
-        if (!activePlantVarieties[tx.crop]) activePlantVarieties[tx.crop] = 0;
-        activePlantVarieties[tx.crop] += tx.plantsPlanted;
-        
-        // Expected yield computations
-        if (lineDetails.status.startsWith("ready-harvest") || lineDetails.status.startsWith("growing")) {
-          expectedYieldAccumulator += getExpectedYieldForActiveLine(tx);
-        }
-        
-        // Check if ready for operational actions (Shenda/Harvest)
-        if (lineDetails.status.startsWith("ready")) {
-          readyLinesList.push({
-            row: r,
-            line: lineId,
-            crop: tx.crop,
-            stage: lineDetails.nextStage,
-            plants: tx.plantsPlanted,
-            txId: tx.id,
-            label: lineDetails.label
-          });
-        }
-      }
-      
-      // Render tower cells
-      const capacityPerTower = rowCap / towersCount;
-      const towersPlantedInLine = lineDetails.status !== "empty" ? lineDetails.data.towersPlanted : 0;
-      
-      for (let t = 1; t <= towersCount; t++) {
-        const cell = document.createElement("div");
-        cell.className = "tower-cell";
-        
-        // Color distribution depending on towers planted
-        if (lineDetails.status !== "empty" && t <= towersPlantedInLine) {
-          cell.className += ` ${lineDetails.colorClass}`;
-          cell.title = `Tower ${t} (${lineId}): ${lineDetails.data.crop} - ${lineDetails.label}`;
-        } else {
-          cell.className += ` state-empty`;
-          cell.title = `Tower ${t} (${lineId}): Empty`;
-        }
-        
-        // Open line modal when clicking any tower in that line
-        cell.addEventListener("click", () => {
-          openLineModal(r, lineId, lineDetails);
-        });
-        
-        towersGrid.appendChild(cell);
-      }
-      
-      lineRow.appendChild(towersGrid);
-      linesWrapper.appendChild(lineRow);
-    });
+    const towersGrid = document.createElement("div");
+    towersGrid.className = "towers-grid";
     
+    const rowDetails = getRowState(r);
+    
+    if (rowDetails.status === "empty") {
+      emptyLinesCount++;
+      emptyLinesList.push(`Row ${r}`);
+    } else {
+      const tx = rowDetails.data;
+      occupiedTowers += tx.towersPlanted;
+      totalActivePlants += tx.plantsPlanted;
+      
+      if (!activePlantVarieties[tx.crop]) activePlantVarieties[tx.crop] = 0;
+      activePlantVarieties[tx.crop] += tx.plantsPlanted;
+      
+      // Expected yield computations
+      if (rowDetails.status.startsWith("ready-harvest") || rowDetails.status.startsWith("growing")) {
+        expectedYieldAccumulator += getExpectedYieldForActiveLine(tx);
+      }
+      
+      // Check if ready for operational actions (Shenda/Harvest)
+      if (rowDetails.status.startsWith("ready")) {
+        readyLinesList.push({
+          row: r,
+          crop: tx.crop,
+          stage: rowDetails.nextStage,
+          plants: tx.plantsPlanted,
+          txId: tx.id,
+          label: rowDetails.label
+        });
+      }
+    }
+    
+    // Render tower cells
+    const capacityPerTower = rowCap / towersCount;
+    const towersPlantedInRow = rowDetails.status !== "empty" ? rowDetails.data.towersPlanted : 0;
+    
+    for (let t = 1; t <= towersCount; t++) {
+      const cell = document.createElement("div");
+      cell.className = "tower-cell";
+      
+      // Color distribution depending on towers planted
+      if (rowDetails.status !== "empty" && t <= towersPlantedInRow) {
+        cell.className += ` ${rowDetails.colorClass}`;
+        cell.title = `Tower ${t}: ${rowDetails.data.crop} - ${rowDetails.label}`;
+      } else {
+        cell.className += ` state-empty`;
+        cell.title = `Tower ${t}: Empty`;
+      }
+      
+      // Open row modal when clicking any tower in that row
+      cell.addEventListener("click", () => {
+        openLineModal(r, rowDetails);
+      });
+      
+      towersGrid.appendChild(cell);
+    }
+    
+    linesWrapper.appendChild(towersGrid);
     rowDiv.appendChild(linesWrapper);
     mapGridElement.appendChild(rowDiv);
   }
@@ -434,11 +433,11 @@ function renderDashboard() {
   document.getElementById("metric-empty-lines").innerText = emptyLinesCount;
   const subEmptyLinesEl = document.getElementById("sub-empty-lines");
   if (subEmptyLinesEl) {
-    subEmptyLinesEl.innerText = `${emptyLinesCount * 63} Empty Towers available`;
+    subEmptyLinesEl.innerText = `${emptyLinesCount * parseInt(appState.settings.towersPerLine)} Empty Towers available`;
   }
   
   document.getElementById("metric-expected-yield").innerText = `${expectedYieldAccumulator.toLocaleString()} kg`;
-  document.getElementById("sub-expected-yield").innerText = `Estimated for active growing lines`;
+  document.getElementById("sub-expected-yield").innerText = `Estimated for active growing rows`;
   
   // Render Alerts Banner
   const alertPanel = document.getElementById("alerts-panel");
@@ -456,33 +455,31 @@ function renderDashboard() {
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
         </svg>
-        <span><strong>Row ${line.row} Line ${line.line}</strong> is ready for <strong>${line.stage}</strong> (${line.crop}, ${line.plants} plants).</span>
+        <span><strong>Row ${line.row}</strong> is ready for <strong>${line.stage}</strong> (${line.crop}, ${line.plants} plants).</span>
       </div>
-      <button class="alert-action-btn" onclick="triggerQuickAction(${line.row}, '${line.line}', '${line.stage}')">${actionWord}</button>
+      <button class="alert-action-btn" onclick="triggerQuickAction(${line.row}, '${line.stage}')">${actionWord}</button>
     `;
     alertPanel.appendChild(card);
   });
   
   // Ready to Clear Lines Alerts
   for (let r = 1; r <= parseInt(appState.settings.rows); r++) {
-    ["A", "B"].forEach(lineId => {
-      const stateDetails = getLineState(r, lineId);
-      if (stateDetails.status === "harvest-completed") {
-        const tx = stateDetails.data;
-        const card = document.createElement("div");
-        card.className = "alert-card info";
-        card.innerHTML = `
-          <div class="alert-content">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span><strong>Row ${r} Line ${lineId}</strong>: All 3 harvests completed. Ready to clear line.</span>
-          </div>
-          <button class="alert-action-btn" onclick="triggerQuickAction(${r}, '${lineId}', 'Clear')">Clear & Empty</button>
-        `;
-        alertPanel.appendChild(card);
-      }
-    });
+    const stateDetails = getRowState(r);
+    if (stateDetails.status === "harvest-completed") {
+      const tx = stateDetails.data;
+      const card = document.createElement("div");
+      card.className = "alert-card info";
+      card.innerHTML = `
+        <div class="alert-content">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span><strong>Row ${r}</strong>: All 3 harvests completed. Ready to clear row.</span>
+        </div>
+        <button class="alert-action-btn" onclick="triggerQuickAction(${r}, 'Clear')">Clear & Empty</button>
+      `;
+      alertPanel.appendChild(card);
+    }
   }
   
   // Render empty lines list
@@ -558,25 +555,25 @@ function renderTrayDashboardList() {
 }
 
 // 5. MODAL INTERACTORS & QUICK ACTIONS
-function openLineModal(row, line, details) {
+function openLineModal(row, details) {
   const overlay = document.getElementById("line-modal-overlay");
   const title = document.getElementById("line-modal-title");
   const info = document.getElementById("line-modal-info");
   const actions = document.getElementById("line-modal-actions");
   
-  title.innerText = `Row ${row} Line ${line} Details`;
+  title.innerText = `Row ${row} Details`;
   overlay.classList.add("active");
   
-  const cap = getLineCapacity(row);
+  const cap = getRowCapacity(row);
   
   if (details.status === "empty") {
     info.innerHTML = `
       <p style="margin-bottom: 8px;"><strong>Status:</strong> <span style="color: var(--text-muted);">EMPTY</span></p>
       <p style="margin-bottom: 8px;"><strong>Plant Capacity:</strong> ${cap} plants (${appState.settings.towersPerLine} towers)</p>
-      <p>This line is clean and ready for a new transplant.</p>
+      <p>This row is clean and ready for a new transplant.</p>
     `;
     actions.innerHTML = `
-      <button class="btn-primary" onclick="closeLineModal(); navigateToTransplantForm(${row}, '${line}')">
+      <button class="btn-primary" onclick="closeLineModal(); navigateToTransplantForm(${row})">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
         Transplant Sowed Saplings
       </button>
@@ -598,7 +595,7 @@ function openLineModal(row, line, details) {
       <p style="margin-bottom: 8px;"><strong>Plants Populated:</strong> ${tx.plantsPlanted} plants (${tx.towersPlanted} towers)</p>
       <p style="margin-bottom: 12px;"><strong>Source Batch:</strong> ${tx.trayBatchId}</p>
       <div style="background: rgba(255,255,255,0.03); border:1px solid var(--border-color); padding:12px; border-radius:10px;">
-        <h5 style="margin-bottom:6px; font-weight:600; font-size:0.85rem; color:var(--text-secondary);">Line Operations History</h5>
+        <h5 style="margin-bottom:6px; font-weight:600; font-size:0.85rem; color:var(--text-secondary);">Row Operations History</h5>
         <div style="font-size:0.8rem; color:var(--text-muted); line-height:1.4;">${harvestHistoryText}</div>
       </div>
     `;
@@ -607,21 +604,21 @@ function openLineModal(row, line, details) {
     let actionButtons = "";
     if (details.status === "ready-shenda") {
       actionButtons = `
-        <button class="btn-primary" onclick="closeLineModal(); triggerQuickAction(${row}, '${line}', 'Shenda')">Log Shenda Cut</button>
+        <button class="btn-primary" onclick="closeLineModal(); triggerQuickAction(${row}, 'Shenda')">Log Shenda Cut</button>
       `;
     } else if (details.status.startsWith("ready-harvest-")) {
       const nextStage = details.nextStage;
       actionButtons = `
-        <button class="btn-primary" onclick="closeLineModal(); triggerQuickAction(${row}, '${line}', '${nextStage}')">Log ${nextStage}</button>
+        <button class="btn-primary" onclick="closeLineModal(); triggerQuickAction(${row}, '${nextStage}')">Log ${nextStage}</button>
       `;
     } else if (details.status === "harvest-completed") {
       actionButtons = `
-        <button class="btn-primary" onclick="closeLineModal(); triggerQuickAction(${row}, '${line}', 'Clear')">Clear & Reset Line</button>
+        <button class="btn-primary" onclick="closeLineModal(); triggerQuickAction(${row}, 'Clear')">Clear & Reset Row</button>
       `;
     } else {
       // Growing - allow early clearance/reset in case of crop issues
       actionButtons = `
-        <button class="btn-danger" style="margin-top:10px;" onclick="closeLineModal(); triggerQuickAction(${row}, '${line}', 'Clear')">Clear Early (Discard Crop)</button>
+        <button class="btn-danger" style="margin-top:10px;" onclick="closeLineModal(); triggerQuickAction(${row}, 'Clear')">Clear Early (Discard Crop)</button>
       `;
     }
     
@@ -633,13 +630,12 @@ function closeLineModal() {
   document.getElementById("line-modal-overlay").classList.remove("active");
 }
 
-function navigateToTransplantForm(row, line) {
+function navigateToTransplantForm(row) {
   // Switch to operations tab
   document.querySelector(".menu-item[data-tab='tab-operations']").click();
   
   // Prefill transplant form values
   document.getElementById("tx-row").value = row;
-  document.getElementById("tx-line").value = line;
   document.getElementById("tx-towers").value = appState.settings.towersPerLine;
   document.getElementById("tx-date").value = new Date().toISOString().split('T')[0];
   
@@ -647,21 +643,20 @@ function navigateToTransplantForm(row, line) {
   updateTransplantBatchOptions(row);
 }
 
-function triggerQuickAction(row, line, stage) {
+function triggerQuickAction(row, stage) {
   // Find active transplant to prefill
-  const activeTx = appState.transplantLogs.find(tx => tx.row === parseInt(row) && tx.line === line && tx.status === "active");
+  const activeTx = appState.transplantLogs.find(tx => tx.row === parseInt(row) && tx.status === "active");
   if (!activeTx && stage !== "Clear") {
-    showToast("Error: No active crop found on this line.", "danger");
+    showToast("Error: No active crop found on this row.", "danger");
     return;
   }
   
   if (stage === "Clear") {
-    if (confirm(`Empty Row ${row} Line ${line}? This will clear the line for future transplants.`)) {
+    if (confirm(`Empty Row ${row}? This will clear the row for future transplants.`)) {
       const log = {
         id: "CLR-" + (appState.clearLogs.length + 1),
         date: new Date().toISOString().split('T')[0],
         row: parseInt(row),
-        line: line,
         transplantLogId: activeTx ? activeTx.id : null,
         reason: "Normal harvest cycle finished",
         loggedBy: "Manager"
@@ -673,7 +668,6 @@ function triggerQuickAction(row, line, stage) {
         logged_by: "Manager",
         date: log.date,
         row: log.row,
-        line: log.line,
         reason: log.reason
       };
       postToSupabase(payload).then(dbId => {
@@ -690,7 +684,7 @@ function triggerQuickAction(row, line, stage) {
       
       saveState();
       refreshAll();
-      showToast(`Row ${row} Line ${line} cleared successfully.`, "success");
+      showToast(`Row ${row} cleared successfully.`, "success");
     }
   } else if (stage === "Shenda") {
     // Log Shenda cut
@@ -698,7 +692,6 @@ function triggerQuickAction(row, line, stage) {
       id: "HRV-" + (appState.harvestLogs.length + 1),
       date: new Date().toISOString().split('T')[0],
       row: parseInt(row),
-      line: line,
       transplantLogId: activeTx.id,
       stage: "Shenda",
       yieldKg: 0, // Shenda is a grooming trim event
@@ -712,7 +705,6 @@ function triggerQuickAction(row, line, stage) {
       logged_by: "Manager",
       date: log.date,
       row: log.row,
-      line: log.line,
       batch: activeTx.batchId || activeTx.trayBatchId,
       stage: log.stage,
       yield_kg: log.yieldKg,
@@ -726,18 +718,17 @@ function triggerQuickAction(row, line, stage) {
     });
     saveState();
     refreshAll();
-    showToast(`Logged Shenda cut for Row ${row} Line ${line}.`, "success");
+    showToast(`Logged Shenda cut for Row ${row}.`, "success");
   } else {
     // Ready for commercial harvest (Harvest 1, 2, or 3)
     // Switch to operations tab and prefill harvest form
     document.querySelector(".menu-item[data-tab='tab-operations']").click();
     document.getElementById("hrv-row").value = row;
-    document.getElementById("hrv-line").value = line;
     document.getElementById("hrv-stage").value = stage;
     document.getElementById("hrv-yield").value = getExpectedYieldForActiveLine(activeTx);
     document.getElementById("hrv-date").value = new Date().toISOString().split('T')[0];
     
-    showToast(`Prefilled harvest details for Row ${row} Line ${line}.`, "info");
+    showToast(`Prefilled harvest details for Row ${row}.`, "info");
   }
 }
 
@@ -824,20 +815,19 @@ function setupFormHandlers() {
     e.preventDefault();
     
     const row = parseInt(document.getElementById("tx-row").value);
-    const line = document.getElementById("tx-line").value;
     const batchId = document.getElementById("tx-batch").value;
     const towersPlanted = parseInt(document.getElementById("tx-towers").value);
     const txDateStr = document.getElementById("tx-date").value;
     
-    if (isNaN(row) || !line || !batchId || isNaN(towersPlanted) || !txDateStr) {
+    if (isNaN(row) || !batchId || isNaN(towersPlanted) || !txDateStr) {
       showToast("Please fill all details.", "danger");
       return;
     }
     
-    // Check if destination line is already occupied
-    const activeTx = appState.transplantLogs.find(t => t.row === row && t.line === line && t.status === "active");
+    // Check if destination row is already occupied
+    const activeTx = appState.transplantLogs.find(t => t.row === row && t.status === "active");
     if (activeTx) {
-      showToast(`Line ${row}${line} is already occupied! Clear it first.`, "danger");
+      showToast(`Row ${row} is already occupied! Clear it first.`, "danger");
       return;
     }
     
@@ -849,7 +839,7 @@ function setupFormHandlers() {
     }
     
     // Compute total plants planted
-    const cap = getLineCapacity(row);
+    const cap = getRowCapacity(row);
     const towersCap = parseInt(appState.settings.towersPerLine);
     const plantsPerTower = cap / towersCap;
     const totalPlantsPlanted = towersPlanted * plantsPerTower;
@@ -863,7 +853,6 @@ function setupFormHandlers() {
       id: "TX-" + (appState.transplantLogs.length + 1),
       date: txDateStr,
       row,
-      line,
       trayBatchId: batchId,
       batchId: generatedBatchId,
       towersPlanted,
@@ -884,7 +873,6 @@ function setupFormHandlers() {
       logged_by: "Manager",
       date: txDateStr,
       row,
-      line,
       batch: generatedBatchId,
       towers: towersPlanted
     };
@@ -898,7 +886,7 @@ function setupFormHandlers() {
     document.getElementById("tx-date").value = new Date().toISOString().split('T')[0];
     
     refreshAll();
-    showToast(`Transplant logged to Row ${row} Line ${line}!`, "success");
+    showToast(`Transplant logged to Row ${row}!`, "success");
   });
   
   // Refresh batch choices when transplant row is selected
@@ -915,21 +903,20 @@ function setupFormHandlers() {
     e.preventDefault();
     
     const row = parseInt(document.getElementById("hrv-row").value);
-    const line = document.getElementById("hrv-line").value;
     const stage = document.getElementById("hrv-stage").value;
     const yieldKg = parseFloat(document.getElementById("hrv-yield").value);
     const wasteKg = parseFloat(document.getElementById("hrv-waste").value || 0);
     const hrvDateStr = document.getElementById("hrv-date").value;
     
-    if (isNaN(row) || !line || !stage || isNaN(yieldKg) || !hrvDateStr) {
+    if (isNaN(row) || !stage || isNaN(yieldKg) || !hrvDateStr) {
       showToast("Please fill all details.", "danger");
       return;
     }
     
     // Find matching active transplant
-    const activeTx = appState.transplantLogs.find(t => t.row === row && t.line === line && t.status === "active");
+    const activeTx = appState.transplantLogs.find(t => t.row === row && t.status === "active");
     if (!activeTx) {
-      showToast(`No active crops currently on Row ${row} Line ${line} to harvest.`, "danger");
+      showToast(`No active crops currently on Row ${row} to harvest.`, "danger");
       return;
     }
     
@@ -938,7 +925,6 @@ function setupFormHandlers() {
       id: "HRV-" + (appState.harvestLogs.length + 1),
       date: hrvDateStr,
       row,
-      line,
       transplantLogId: activeTx.id,
       stage,
       yieldKg,
@@ -955,7 +941,6 @@ function setupFormHandlers() {
       logged_by: "Manager",
       date: hrvDateStr,
       row: row,
-      line: line,
       batch: activeTx.batchId || activeTx.trayBatchId,
       stage: stage,
       yield_kg: yieldKg,
@@ -971,7 +956,7 @@ function setupFormHandlers() {
     document.getElementById("hrv-date").value = new Date().toISOString().split('T')[0];
     
     refreshAll();
-    showToast(`Logged yield of ${yieldKg} kg for Row ${row} Line ${line}!`, "success");
+    showToast(`Logged yield of ${yieldKg} kg for Row ${row}!`, "success");
   });
 }
 
@@ -1518,7 +1503,7 @@ async function syncWithCloud() {
           // Check duplicate
           const match = appState.transplantLogs.find(t => 
             t.supabaseId === log.id ||
-            (!t.supabaseId && t.row === log.row && t.line === log.line && t.date === log.date && t.trayBatchId === log.batch)
+            (!t.supabaseId && t.row === log.row && t.date === log.date && t.trayBatchId === log.batch)
           );
           if (match) {
             if (!match.supabaseId) {
@@ -1528,13 +1513,13 @@ async function syncWithCloud() {
             return;
           }
           
-          const cap = getLineCapacity(log.row);
+          const cap = getRowCapacity(log.row);
           const towersCap = parseInt(appState.settings.towersPerLine);
           const plantsPerTower = cap / towersCap;
           
-          const activeTx = appState.transplantLogs.find(t => t.row === log.row && t.line === log.line && t.status === "active");
+          const activeTx = appState.transplantLogs.find(t => t.row === log.row && t.status === "active");
           if (activeTx) {
-            console.warn(`Line ${log.row}${log.line} already occupied. Skipping remote transplant.`);
+            console.warn(`Row ${log.row} already occupied. Skipping remote transplant.`);
             return;
           }
           
@@ -1545,10 +1530,9 @@ async function syncWithCloud() {
             id: "TX-" + (appState.transplantLogs.length + 1),
             date: log.date,
             row: log.row,
-            line: log.line,
             trayBatchId: log.batch,
-            towersPlanted: log.towers || 63,
-            plantsPlanted: (log.towers || 63) * plantsPerTower,
+            towersPlanted: log.towers || 126,
+            plantsPlanted: (log.towers || 126) * plantsPerTower,
             crop: cropName,
             status: "active",
             loggedBy: log.logged_by || "System",
@@ -1564,7 +1548,7 @@ async function syncWithCloud() {
           // Check duplicate
           const match = appState.harvestLogs.find(h => 
             h.supabaseId === log.id ||
-            (!h.supabaseId && h.row === log.row && h.line === log.line && h.date === log.date && h.stage === log.stage)
+            (!h.supabaseId && h.row === log.row && h.date === log.date && h.stage === log.stage)
           );
           if (match) {
             if (!match.supabaseId) {
@@ -1574,7 +1558,7 @@ async function syncWithCloud() {
             return;
           }
           
-          const activeTx = appState.transplantLogs.find(t => t.row === log.row && t.line === log.line && t.status === "active");
+          const activeTx = appState.transplantLogs.find(t => t.row === log.row && t.status === "active");
           const txId = activeTx ? activeTx.id : null;
           const cropName = activeTx ? activeTx.crop : (log.crop || "Unknown Crop");
           
@@ -1582,7 +1566,6 @@ async function syncWithCloud() {
             id: "HRV-" + (appState.harvestLogs.length + 1),
             date: log.date,
             row: log.row,
-            line: log.line,
             transplantLogId: txId,
             stage: log.stage,
             yieldKg: log.yield_kg,
@@ -1599,7 +1582,7 @@ async function syncWithCloud() {
           // Check duplicate
           const match = appState.clearLogs.find(c => 
             c.supabaseId === log.id ||
-            (!c.supabaseId && c.row === log.row && c.line === log.line && c.date === log.date)
+            (!c.supabaseId && c.row === log.row && c.date === log.date)
           );
           if (match) {
             if (!match.supabaseId) {
@@ -1609,14 +1592,13 @@ async function syncWithCloud() {
             return;
           }
           
-          const activeTx = appState.transplantLogs.find(t => t.row === log.row && t.line === log.line && t.status === "active");
+          const activeTx = appState.transplantLogs.find(t => t.row === log.row && t.status === "active");
           const txId = activeTx ? activeTx.id : null;
           
           const clrLog = {
             id: "CLR-" + (appState.clearLogs.length + 1),
             date: log.date,
             row: log.row,
-            line: log.line,
             transplantLogId: txId,
             reason: log.reason,
             loggedBy: log.logged_by || "System",
@@ -1845,13 +1827,13 @@ function importParsedLogs() {
         const sourceBatch = appState.sowingLogs.find(s => s.id === item.batch);
         const cropName = sourceBatch ? sourceBatch.crop : "Unknown Crop";
         
-        const cap = getLineCapacity(item.row);
+        const cap = getRowCapacity(item.row);
         const towersCap = parseInt(appState.settings.towersPerLine);
         const plantsPerTower = cap / towersCap;
         
-        const activeTx = appState.transplantLogs.find(t => t.row === item.row && t.line === item.line && t.status === "active");
+        const activeTx = appState.transplantLogs.find(t => t.row === item.row && t.status === "active");
         if (activeTx) {
-          console.warn(`Row ${item.row} Line ${item.line} is already occupied. Skipping line ${item.lineNum}`);
+          console.warn(`Row ${item.row} is already occupied. Skipping line ${item.lineNum}`);
           return;
         }
         
@@ -1859,7 +1841,6 @@ function importParsedLogs() {
           id: "TX-" + (appState.transplantLogs.length + 1),
           date: item.date,
           row: item.row,
-          line: item.line,
           trayBatchId: item.batch,
           towersPlanted: item.towers,
           plantsPlanted: item.towers * plantsPerTower,
@@ -1874,7 +1855,7 @@ function importParsedLogs() {
         importCount++;
         
       } else if (item.action === "HARVEST") {
-        const activeTx = appState.transplantLogs.find(t => t.row === item.row && t.line === item.line && t.status === "active");
+        const activeTx = appState.transplantLogs.find(t => t.row === item.row && t.status === "active");
         const cropName = activeTx ? activeTx.crop : "Unknown Crop";
         const txId = activeTx ? activeTx.id : null;
         
@@ -1882,7 +1863,6 @@ function importParsedLogs() {
           id: "HRV-" + (appState.harvestLogs.length + 1),
           date: item.date,
           row: item.row,
-          line: item.line,
           transplantLogId: txId,
           stage: item.stage,
           yieldKg: item.yield,
@@ -1895,14 +1875,13 @@ function importParsedLogs() {
         importCount++;
         
       } else if (item.action === "CLEAR") {
-        const activeTx = appState.transplantLogs.find(t => t.row === item.row && t.line === item.line && t.status === "active");
+        const activeTx = appState.transplantLogs.find(t => t.row === item.row && t.status === "active");
         const txId = activeTx ? activeTx.id : null;
         
         const clrLog = {
           id: "CLR-" + (appState.clearLogs.length + 1),
           date: item.date,
           row: item.row,
-          line: item.line,
           transplantLogId: txId,
           reason: item.reason + (item.raw.remarks || item.raw.remark ? " - " + (item.raw.remarks || item.raw.remark) : ""),
           loggedBy: item.raw.employee || item.raw.worker || "System"
