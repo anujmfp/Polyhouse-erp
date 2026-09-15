@@ -106,6 +106,26 @@ function initStorage() {
     // Generate default empty but configured state
     saveState();
   }
+
+  // Check URL parameters for View-Only mode and pre-configured Cloud Credentials
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const isViewOnly = urlParams.get('mode') === 'view' || urlParams.get('view') === 'readonly' || urlParams.get('readonly') === 'true';
+    appState.isViewOnly = isViewOnly;
+    if (isViewOnly) {
+      document.body.classList.add('view-only-mode');
+    }
+
+    const cloudUrl = urlParams.get('url');
+    const cloudKey = urlParams.get('key');
+    if (cloudUrl && cloudKey) {
+      appState.settings.supabaseUrl = decodeURIComponent(cloudUrl);
+      appState.settings.supabaseKey = decodeURIComponent(cloudKey);
+      localStorage.setItem("polyhouse_erp_state", JSON.stringify(appState));
+    }
+  } catch (e) {
+    console.warn("Could not parse URL query parameters:", e);
+  }
 }
 
 function saveState() {
@@ -143,6 +163,9 @@ function refreshAll() {
 
 // 2. LIVE METRICS & DATE CALCULATION ENGINE
 function getRowCapacity(row) {
+  if (row === "Soil" || row === "soil") {
+    return 5040; // Standard 126 slots * 40 plants capacity for Soil cultivation area
+  }
   const rowNum = parseInt(row);
   const towers = appState.settings.towersPerLine;
   const holders = rowNum <= 7 ? appState.settings.rows1to7Holders : appState.settings.rows8to19Holders;
@@ -158,8 +181,14 @@ function getGerminationPeriod(type) {
 
 // Compute dynamic row state
 function getRowState(row) {
-  // Check if there is an active transplant log for this row
-  const activeTx = appState.transplantLogs.find(tx => tx.row === row && tx.status === "active");
+  // Check if there is an active transplant log for this row (numeric row or "Soil")
+  const activeTx = appState.transplantLogs.find(tx => {
+    if (tx.status !== "active") return false;
+    if (row === "Soil" || row === "soil") {
+      return tx.row === "Soil" || tx.row === "soil" || tx.line === "Soil";
+    }
+    return parseInt(tx.row) === parseInt(row);
+  });
   if (!activeTx) {
     return { status: "empty", label: "Empty", colorClass: "state-empty", data: null };
   }
@@ -415,6 +444,77 @@ function renderDashboard() {
     rowDiv.appendChild(linesWrapper);
     mapGridElement.appendChild(rowDiv);
   }
+
+  // Dedicated "Soil" cultivation line
+  const soilTowersCount = parseInt(appState.settings.towersPerLine); // 126 slots
+  totalTowers += soilTowersCount;
+  
+  const soilDiv = document.createElement("div");
+  soilDiv.className = "row-container soil-row";
+  
+  const soilLabel = document.createElement("div");
+  soilLabel.className = "row-label soil-label";
+  soilLabel.innerHTML = `<span>🌱 Soil</span>`;
+  soilDiv.appendChild(soilLabel);
+  
+  const soilLinesWrapper = document.createElement("div");
+  soilLinesWrapper.className = "lines-wrapper";
+  
+  const soilTowersGrid = document.createElement("div");
+  soilTowersGrid.className = "towers-grid";
+  
+  const soilDetails = getRowState("Soil");
+  
+  if (soilDetails.status === "empty") {
+    emptyLinesCount++;
+    emptyLinesList.push("Soil");
+  } else {
+    const tx = soilDetails.data;
+    occupiedTowers += tx.towersPlanted;
+    totalActivePlants += tx.plantsPlanted;
+    
+    if (!activePlantVarieties[tx.crop]) activePlantVarieties[tx.crop] = 0;
+    activePlantVarieties[tx.crop] += tx.plantsPlanted;
+    
+    if (soilDetails.status.startsWith("ready-harvest") || soilDetails.status.startsWith("growing")) {
+      expectedYieldAccumulator += getExpectedYieldForActiveLine(tx);
+    }
+    
+    if (soilDetails.status.startsWith("ready")) {
+      readyLinesList.push({
+        row: "Soil",
+        crop: tx.crop,
+        stage: soilDetails.nextStage,
+        plants: tx.plantsPlanted,
+        txId: tx.id,
+        label: soilDetails.label
+      });
+    }
+  }
+  
+  const soilPlantedCount = soilDetails.status !== "empty" ? soilDetails.data.towersPlanted : 0;
+  for (let t = 1; t <= soilTowersCount; t++) {
+    const cell = document.createElement("div");
+    cell.className = "tower-cell";
+    
+    if (soilDetails.status !== "empty" && t <= soilPlantedCount) {
+      cell.className += ` ${soilDetails.colorClass}`;
+      cell.title = `Soil Slot ${t}: ${soilDetails.data.crop} - ${soilDetails.label}`;
+    } else {
+      cell.className += ` state-empty`;
+      cell.title = `Soil Slot ${t}: Empty`;
+    }
+    
+    cell.addEventListener("click", () => {
+      openLineModal("Soil", soilDetails);
+    });
+    
+    soilTowersGrid.appendChild(cell);
+  }
+  
+  soilLinesWrapper.appendChild(soilTowersGrid);
+  soilDiv.appendChild(soilLinesWrapper);
+  mapGridElement.appendChild(soilDiv);
   
   // Update dashboard metric cards
   const occupancyPercent = totalTowers > 0 ? Math.round((occupiedTowers / totalTowers) * 100) : 0;
@@ -449,38 +549,50 @@ function renderDashboard() {
     card.className = "alert-card warning";
     
     let actionWord = line.stage === "Shenda" ? "Prune Shenda" : `Harvest ${line.stage.split(' ').pop()}`;
+    const rowDisplayName = line.row === "Soil" ? "Soil Line" : `Row ${line.row}`;
+    const actionBtnHtml = appState.isViewOnly
+      ? `<span class="badge" style="font-size:0.75rem; padding:4px 8px; background:rgba(99,102,241,0.2); color:#a5b4fc; border-radius:6px;">Ready</span>`
+      : `<button class="alert-action-btn" onclick="triggerQuickAction('${line.row}', '${line.stage}')">${actionWord}</button>`;
     
     card.innerHTML = `
       <div class="alert-content">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
         </svg>
-        <span><strong>Row ${line.row}</strong> is ready for <strong>${line.stage}</strong> (${line.crop}, ${line.plants} plants).</span>
+        <span><strong>${rowDisplayName}</strong> is ready for <strong>${line.stage}</strong> (${line.crop}, ${line.plants} plants).</span>
       </div>
-      <button class="alert-action-btn" onclick="triggerQuickAction(${line.row}, '${line.stage}')">${actionWord}</button>
+      ${actionBtnHtml}
     `;
     alertPanel.appendChild(card);
   });
   
-  // Ready to Clear Lines Alerts
-  for (let r = 1; r <= parseInt(appState.settings.rows); r++) {
+  // Ready to Clear Lines Alerts (Rows 1-19 and Soil)
+  const rowsToCheckClear = [];
+  for (let r = 1; r <= parseInt(appState.settings.rows); r++) rowsToCheckClear.push(r);
+  rowsToCheckClear.push("Soil");
+
+  rowsToCheckClear.forEach(r => {
     const stateDetails = getRowState(r);
     if (stateDetails.status === "harvest-completed") {
       const tx = stateDetails.data;
       const card = document.createElement("div");
       card.className = "alert-card info";
+      const displayName = r === "Soil" ? "Soil Line" : `Row ${r}`;
+      const actionBtnHtml = appState.isViewOnly
+        ? `<span class="badge" style="font-size:0.75rem; padding:4px 8px; background:rgba(99,102,241,0.2); color:#a5b4fc; border-radius:6px;">Completed</span>`
+        : `<button class="alert-action-btn" onclick="triggerQuickAction('${r}', 'Clear')">Clear & Empty</button>`;
       card.innerHTML = `
         <div class="alert-content">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span><strong>Row ${r}</strong>: All 3 harvests completed. Ready to clear row.</span>
+          <span><strong>${displayName}</strong>: All 3 harvests completed. Ready to clear.</span>
         </div>
-        <button class="alert-action-btn" onclick="triggerQuickAction(${r}, 'Clear')">Clear & Empty</button>
+        ${actionBtnHtml}
       `;
       alertPanel.appendChild(card);
     }
-  }
+  });
   
   // Render empty lines list
   const emptyLinesListElement = document.getElementById("empty-lines-list");
@@ -561,7 +673,8 @@ function openLineModal(row, details) {
   const info = document.getElementById("line-modal-info");
   const actions = document.getElementById("line-modal-actions");
   
-  title.innerText = `Row ${row} Details`;
+  const isSoil = (row === "Soil" || row === "soil");
+  title.innerText = isSoil ? `Soil Line Details` : `Row ${row} Details`;
   overlay.classList.add("active");
   
   const cap = getRowCapacity(row);
@@ -569,15 +682,23 @@ function openLineModal(row, details) {
   if (details.status === "empty") {
     info.innerHTML = `
       <p style="margin-bottom: 8px;"><strong>Status:</strong> <span style="color: var(--text-muted);">EMPTY</span></p>
-      <p style="margin-bottom: 8px;"><strong>Plant Capacity:</strong> ${cap} plants (${appState.settings.towersPerLine} towers)</p>
-      <p>This row is clean and ready for a new transplant.</p>
+      <p style="margin-bottom: 8px;"><strong>Plant Capacity:</strong> ${cap} plants (${appState.settings.towersPerLine} ${isSoil ? 'slots' : 'towers'})</p>
+      <p>This ${isSoil ? 'soil cultivation area' : 'row'} is clean and ready for a new transplant.</p>
     `;
-    actions.innerHTML = `
-      <button class="btn-primary" onclick="closeLineModal(); navigateToTransplantForm(${row})">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
-        Transplant Sowed Saplings
-      </button>
-    `;
+    if (appState.isViewOnly) {
+      actions.innerHTML = `
+        <div style="padding: 10px 16px; background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.25); border-radius: 8px; color: #a5b4fc; font-size: 0.85rem; text-align: center; width: 100%;">
+          👁️ View-Only Mode: Action logging is restricted to administrators and workers.
+        </div>
+      `;
+    } else {
+      actions.innerHTML = `
+        <button class="btn-primary" onclick="closeLineModal(); navigateToTransplantForm('${row}')">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
+          Transplant Sowed Saplings
+        </button>
+      `;
+    }
   } else {
     const tx = details.data;
     const harvests = appState.harvestLogs.filter(h => h.transplantLogId === tx.id);
@@ -592,37 +713,44 @@ function openLineModal(row, details) {
       <p style="margin-bottom: 8px;"><strong>Status:</strong> <span style="color: var(--color-${details.colorClass.split('-').pop()}); font-weight:600;">${details.label}</span></p>
       <p style="margin-bottom: 8px;"><strong>Crop Variety:</strong> ${tx.crop}</p>
       <p style="margin-bottom: 8px;"><strong>Transplanted Date:</strong> ${tx.date}</p>
-      <p style="margin-bottom: 8px;"><strong>Plants Populated:</strong> ${tx.plantsPlanted} plants (${tx.towersPlanted} towers)</p>
+      <p style="margin-bottom: 8px;"><strong>Plants Populated:</strong> ${tx.plantsPlanted} plants (${tx.towersPlanted} ${isSoil ? 'slots' : 'towers'})</p>
       <p style="margin-bottom: 12px;"><strong>Source Batch:</strong> ${tx.trayBatchId}</p>
       <div style="background: rgba(255,255,255,0.03); border:1px solid var(--border-color); padding:12px; border-radius:10px;">
-        <h5 style="margin-bottom:6px; font-weight:600; font-size:0.85rem; color:var(--text-secondary);">Row Operations History</h5>
+        <h5 style="margin-bottom:6px; font-weight:600; font-size:0.85rem; color:var(--text-secondary);">${isSoil ? 'Soil' : 'Row'} Operations History</h5>
         <div style="font-size:0.8rem; color:var(--text-muted); line-height:1.4;">${harvestHistoryText}</div>
       </div>
     `;
     
     // Actions based on lifecycle state
-    let actionButtons = "";
-    if (details.status === "ready-shenda") {
-      actionButtons = `
-        <button class="btn-primary" onclick="closeLineModal(); triggerQuickAction(${row}, 'Shenda')">Log Shenda Cut</button>
-      `;
-    } else if (details.status.startsWith("ready-harvest-")) {
-      const nextStage = details.nextStage;
-      actionButtons = `
-        <button class="btn-primary" onclick="closeLineModal(); triggerQuickAction(${row}, '${nextStage}')">Log ${nextStage}</button>
-      `;
-    } else if (details.status === "harvest-completed") {
-      actionButtons = `
-        <button class="btn-primary" onclick="closeLineModal(); triggerQuickAction(${row}, 'Clear')">Clear & Reset Row</button>
+    if (appState.isViewOnly) {
+      actions.innerHTML = `
+        <div style="padding: 10px 16px; background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.25); border-radius: 8px; color: #a5b4fc; font-size: 0.85rem; text-align: center; width: 100%;">
+          👁️ View-Only Mode: Action logging is restricted to administrators and workers.
+        </div>
       `;
     } else {
-      // Growing - allow early clearance/reset in case of crop issues
-      actionButtons = `
-        <button class="btn-danger" style="margin-top:10px;" onclick="closeLineModal(); triggerQuickAction(${row}, 'Clear')">Clear Early (Discard Crop)</button>
-      `;
+      let actionButtons = "";
+      if (details.status === "ready-shenda") {
+        actionButtons = `
+          <button class="btn-primary" onclick="closeLineModal(); triggerQuickAction('${row}', 'Shenda')">Log Shenda Cut</button>
+        `;
+      } else if (details.status.startsWith("ready-harvest-")) {
+        const nextStage = details.nextStage;
+        actionButtons = `
+          <button class="btn-primary" onclick="closeLineModal(); triggerQuickAction('${row}', '${nextStage}')">Log ${nextStage}</button>
+        `;
+      } else if (details.status === "harvest-completed") {
+        actionButtons = `
+          <button class="btn-primary" onclick="closeLineModal(); triggerQuickAction('${row}', 'Clear')">Clear & Reset ${isSoil ? 'Soil' : 'Row'}</button>
+        `;
+      } else {
+        // Growing - allow early clearance/reset in case of crop issues
+        actionButtons = `
+          <button class="btn-danger" style="margin-top:10px;" onclick="closeLineModal(); triggerQuickAction('${row}', 'Clear')">Clear Early (Discard Crop)</button>
+        `;
+      }
+      actions.innerHTML = actionButtons;
     }
-    
-    actions.innerHTML = actionButtons;
   }
 }
 
@@ -644,19 +772,32 @@ function navigateToTransplantForm(row) {
 }
 
 function triggerQuickAction(row, stage) {
+  if (appState.isViewOnly) {
+    showToast("View-Only Mode: Action logging is disabled.", "warning");
+    return;
+  }
+
+  const isSoil = (row === "Soil" || row === "soil");
+  const rowDisplayName = isSoil ? "Soil Line" : `Row ${row}`;
+
   // Find active transplant to prefill
-  const activeTx = appState.transplantLogs.find(tx => tx.row === parseInt(row) && tx.status === "active");
+  const activeTx = appState.transplantLogs.find(tx => {
+    if (tx.status !== "active") return false;
+    if (isSoil) return tx.row === "Soil" || tx.row === "soil" || tx.line === "Soil";
+    return parseInt(tx.row) === parseInt(row);
+  });
+
   if (!activeTx && stage !== "Clear") {
-    showToast("Error: No active crop found on this row.", "danger");
+    showToast(`Error: No active crop found on ${rowDisplayName}.`, "danger");
     return;
   }
   
   if (stage === "Clear") {
-    if (confirm(`Empty Row ${row}? This will clear the row for future transplants.`)) {
+    if (confirm(`Empty ${rowDisplayName}? This will clear it for future transplants.`)) {
       const log = {
         id: "CLR-" + (appState.clearLogs.length + 1),
         date: new Date().toISOString().split('T')[0],
-        row: parseInt(row),
+        row: isSoil ? "Soil" : parseInt(row),
         transplantLogId: activeTx ? activeTx.id : null,
         reason: "Normal harvest cycle finished",
         loggedBy: "Manager"
@@ -667,7 +808,8 @@ function triggerQuickAction(row, stage) {
         type: "clear",
         logged_by: "Manager",
         date: log.date,
-        row: log.row,
+        row: isSoil ? null : log.row,
+        line: isSoil ? "Soil" : null,
         reason: log.reason
       };
       postToSupabase(payload).then(dbId => {
@@ -684,14 +826,14 @@ function triggerQuickAction(row, stage) {
       
       saveState();
       refreshAll();
-      showToast(`Row ${row} cleared successfully.`, "success");
+      showToast(`${rowDisplayName} cleared successfully.`, "success");
     }
   } else if (stage === "Shenda") {
     // Log Shenda cut
     const log = {
       id: "HRV-" + (appState.harvestLogs.length + 1),
       date: new Date().toISOString().split('T')[0],
-      row: parseInt(row),
+      row: isSoil ? "Soil" : parseInt(row),
       transplantLogId: activeTx.id,
       stage: "Shenda",
       yieldKg: 0, // Shenda is a grooming trim event
@@ -704,7 +846,8 @@ function triggerQuickAction(row, stage) {
       type: "harvest",
       logged_by: "Manager",
       date: log.date,
-      row: log.row,
+      row: isSoil ? null : log.row,
+      line: isSoil ? "Soil" : null,
       batch: activeTx.batchId || activeTx.trayBatchId,
       stage: log.stage,
       yield_kg: log.yieldKg,
@@ -718,7 +861,7 @@ function triggerQuickAction(row, stage) {
     });
     saveState();
     refreshAll();
-    showToast(`Logged Shenda cut for Row ${row}.`, "success");
+    showToast(`Logged Shenda cut for ${rowDisplayName}.`, "success");
   } else {
     // Ready for commercial harvest (Harvest 1, 2, or 3)
     // Switch to operations tab and prefill harvest form
@@ -728,7 +871,7 @@ function triggerQuickAction(row, stage) {
     document.getElementById("hrv-yield").value = getExpectedYieldForActiveLine(activeTx);
     document.getElementById("hrv-date").value = new Date().toISOString().split('T')[0];
     
-    showToast(`Prefilled harvest details for Row ${row}.`, "info");
+    showToast(`Prefilled harvest details for ${rowDisplayName}.`, "info");
   }
 }
 
@@ -751,6 +894,10 @@ function setupFormHandlers() {
   const sowingForm = document.getElementById("form-sowing");
   sowingForm.addEventListener("submit", (e) => {
     e.preventDefault();
+    if (appState.isViewOnly) {
+      showToast("View-Only Mode: Submissions are disabled.", "warning");
+      return;
+    }
     
     const crop = document.getElementById("sow-crop").value;
     const type = document.getElementById("sow-type").value;
@@ -813,21 +960,31 @@ function setupFormHandlers() {
   const transplantForm = document.getElementById("form-transplant");
   transplantForm.addEventListener("submit", (e) => {
     e.preventDefault();
+    if (appState.isViewOnly) {
+      showToast("View-Only Mode: Submissions are disabled.", "warning");
+      return;
+    }
     
-    const row = parseInt(document.getElementById("tx-row").value);
+    const rawRow = document.getElementById("tx-row").value;
+    const isSoil = (rawRow === "Soil" || rawRow === "soil");
+    const row = isSoil ? "Soil" : parseInt(rawRow);
     const batchId = document.getElementById("tx-batch").value;
     const towersPlanted = parseInt(document.getElementById("tx-towers").value);
     const txDateStr = document.getElementById("tx-date").value;
     
-    if (isNaN(row) || !batchId || isNaN(towersPlanted) || !txDateStr) {
+    if ((!isSoil && isNaN(row)) || !batchId || isNaN(towersPlanted) || !txDateStr) {
       showToast("Please fill all details.", "danger");
       return;
     }
     
     // Check if destination row is already occupied
-    const activeTx = appState.transplantLogs.find(t => t.row === row && t.status === "active");
+    const activeTx = appState.transplantLogs.find(t => {
+      if (t.status !== "active") return false;
+      if (isSoil) return t.row === "Soil" || t.row === "soil" || t.line === "Soil";
+      return parseInt(t.row) === parseInt(row);
+    });
     if (activeTx) {
-      showToast(`Row ${row} is already occupied! Clear it first.`, "danger");
+      showToast(`${isSoil ? "Soil Line" : "Row " + row} is already occupied! Clear it first.`, "danger");
       return;
     }
     
@@ -872,7 +1029,8 @@ function setupFormHandlers() {
       type: "transplant",
       logged_by: "Manager",
       date: txDateStr,
-      row,
+      row: isSoil ? null : row,
+      line: isSoil ? "Soil" : null,
       batch: generatedBatchId,
       towers: towersPlanted
     };
@@ -886,7 +1044,7 @@ function setupFormHandlers() {
     document.getElementById("tx-date").value = new Date().toISOString().split('T')[0];
     
     refreshAll();
-    showToast(`Transplant logged to Row ${row}!`, "success");
+    showToast(`Transplant logged to ${isSoil ? "Soil Line" : "Row " + row}!`, "success");
   });
   
   // Refresh batch choices when transplant row is selected
@@ -901,22 +1059,32 @@ function setupFormHandlers() {
   const harvestForm = document.getElementById("form-harvest");
   harvestForm.addEventListener("submit", (e) => {
     e.preventDefault();
+    if (appState.isViewOnly) {
+      showToast("View-Only Mode: Submissions are disabled.", "warning");
+      return;
+    }
     
-    const row = parseInt(document.getElementById("hrv-row").value);
+    const rawRow = document.getElementById("hrv-row").value;
+    const isSoil = (rawRow === "Soil" || rawRow === "soil");
+    const row = isSoil ? "Soil" : parseInt(rawRow);
     const stage = document.getElementById("hrv-stage").value;
     const yieldKg = parseFloat(document.getElementById("hrv-yield").value);
     const wasteKg = parseFloat(document.getElementById("hrv-waste").value || 0);
     const hrvDateStr = document.getElementById("hrv-date").value;
     
-    if (isNaN(row) || !stage || isNaN(yieldKg) || !hrvDateStr) {
+    if ((!isSoil && isNaN(row)) || !stage || isNaN(yieldKg) || !hrvDateStr) {
       showToast("Please fill all details.", "danger");
       return;
     }
     
     // Find matching active transplant
-    const activeTx = appState.transplantLogs.find(t => t.row === row && t.status === "active");
+    const activeTx = appState.transplantLogs.find(t => {
+      if (t.status !== "active") return false;
+      if (isSoil) return t.row === "Soil" || t.row === "soil" || t.line === "Soil";
+      return parseInt(t.row) === parseInt(row);
+    });
     if (!activeTx) {
-      showToast(`No active crops currently on Row ${row} to harvest.`, "danger");
+      showToast(`No active crops currently on ${isSoil ? "Soil Line" : "Row " + row} to harvest.`, "danger");
       return;
     }
     
@@ -940,7 +1108,8 @@ function setupFormHandlers() {
       type: "harvest",
       logged_by: "Manager",
       date: hrvDateStr,
-      row: row,
+      row: isSoil ? null : row,
+      line: isSoil ? "Soil" : null,
       batch: activeTx.batchId || activeTx.trayBatchId,
       stage: stage,
       yield_kg: yieldKg,
@@ -956,7 +1125,7 @@ function setupFormHandlers() {
     document.getElementById("hrv-date").value = new Date().toISOString().split('T')[0];
     
     refreshAll();
-    showToast(`Logged yield of ${yieldKg} kg for Row ${row}!`, "success");
+    showToast(`Logged yield of ${yieldKg} kg for ${isSoil ? "Soil Line" : "Row " + row}!`, "success");
   });
 }
 
@@ -986,12 +1155,13 @@ function renderLogs() {
   // Map transplant logs
   if (currentFilter === "all" || currentFilter === "transplant") {
     appState.transplantLogs.forEach(t => {
+      const loc = (t.row === "Soil" || t.line === "Soil") ? "Soil Line" : `Row ${t.row}`;
       mergedLogs.push({
         id: t.id,
         date: t.date,
         type: "Transplant",
         crop: t.crop,
-        details: `Row ${t.row} Line ${t.line} | ${t.towersPlanted} Towers (${t.plantsPlanted} plants) | Batch: ${t.trayBatchId} [${t.status}] | Employee: ${t.loggedBy || 'Manager'}${t.remarks ? ` | Remarks: ${t.remarks}` : ''}`,
+        details: `${loc} | ${t.towersPlanted} Towers/Slots (${t.plantsPlanted} plants) | Batch: ${t.batchId || t.trayBatchId} [${t.status}] | Employee: ${t.loggedBy || 'Manager'}${t.remarks ? ` | Remarks: ${t.remarks}` : ''}`,
         raw: t
       });
     });
@@ -1000,12 +1170,13 @@ function renderLogs() {
   // Map harvest logs
   if (currentFilter === "all" || currentFilter === "harvest") {
     appState.harvestLogs.forEach(h => {
+      const loc = (h.row === "Soil" || h.line === "Soil") ? "Soil Line" : `Row ${h.row}`;
       mergedLogs.push({
         id: h.id,
         date: h.date,
         type: "Harvest",
         crop: h.crop,
-        details: `Row ${h.row} Line ${h.line} (${h.stage}) | Yield: ${h.yieldKg} kg (Waste: ${h.wasteKg} kg) | Employee: ${h.loggedBy || 'Manager'}${h.remarks ? ` | Remarks: ${h.remarks}` : ''}`,
+        details: `${loc} (${h.stage}) | Yield: ${h.yieldKg} kg (Waste: ${h.wasteKg} kg) | Employee: ${h.loggedBy || 'Manager'}${h.remarks ? ` | Remarks: ${h.remarks}` : ''}`,
         raw: h
       });
     });
@@ -1014,12 +1185,13 @@ function renderLogs() {
   // Map clearances
   if (currentFilter === "all" || currentFilter === "clear") {
     appState.clearLogs.forEach(c => {
+      const loc = (c.row === "Soil" || c.line === "Soil") ? "Soil Line" : `Row ${c.row}`;
       mergedLogs.push({
         id: c.id,
         date: c.date,
         type: "Clearance",
         crop: "N/A",
-        details: `Row ${c.row} Line ${c.line} cleared. Reason: ${c.reason} | Employee: ${c.loggedBy || 'Manager'}`,
+        details: `${loc} cleared. Reason: ${c.reason} | Employee: ${c.loggedBy || 'Manager'}`,
         raw: c
       });
     });
@@ -1042,11 +1214,12 @@ function renderLogs() {
       <td>${log.crop}</td>
       <td>${log.details}</td>
       <td>
+        ${appState.isViewOnly ? '<span style="color:var(--text-muted); font-size:0.75rem;">View-only</span>' : `
         <button class="log-action-btn" onclick="deleteLog('${log.type}', '${log.id}')" title="Delete record">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
           </svg>
-        </button>
+        </button>`}
       </td>
     `;
     tableBody.appendChild(row);
@@ -1060,6 +1233,11 @@ function filterLogs(filterType, element) {
 }
 
 function deleteLog(type, id) {
+  if (appState.isViewOnly) {
+    showToast("View-Only Mode: Deleting records is restricted.", "warning");
+    return;
+  }
+
   if (!confirm(`Are you sure you want to delete historical record ${id}?`)) {
     return;
   }
@@ -1448,7 +1626,7 @@ async function syncWithCloud() {
   
   try {
     const cleanUrl = url.endsWith('/') ? url : url + '/';
-    const endpoint = `${cleanUrl}rest/v1/polyhouse_logs?select=*`;
+    const endpoint = `${cleanUrl}rest/v1/polyhouse_logs?select=*&order=date.asc,id.asc`;
     
     const res = await fetch(endpoint, {
       method: 'GET',
@@ -1462,6 +1640,8 @@ async function syncWithCloud() {
     const logsQueue = await res.json();
     
     if (logsQueue && logsQueue.length > 0) {
+      // Sort chronologically to preserve accurate lifecycle progression
+      logsQueue.sort((a, b) => (new Date(a.date) - new Date(b.date)) || (a.id - b.id));
       let mergedCount = 0;
       
       logsQueue.forEach(log => {
@@ -1500,10 +1680,13 @@ async function syncWithCloud() {
           mergedCount++;
           
         } else if (log.type === "transplant") {
+          const isSoil = (log.line === "Soil" || log.row === "Soil" || log.row === 0 || log.row === "0");
+          const rowVal = isSoil ? "Soil" : log.row;
+
           // Check duplicate
           const match = appState.transplantLogs.find(t => 
             t.supabaseId === log.id ||
-            (!t.supabaseId && t.row === log.row && t.date === log.date && t.trayBatchId === log.batch)
+            (!t.supabaseId && String(t.row).toLowerCase() === String(rowVal).toLowerCase() && t.date === log.date && t.trayBatchId === log.batch)
           );
           if (match) {
             if (!match.supabaseId) {
@@ -1513,13 +1696,17 @@ async function syncWithCloud() {
             return;
           }
           
-          const cap = getRowCapacity(log.row);
+          const cap = getRowCapacity(rowVal);
           const towersCap = parseInt(appState.settings.towersPerLine);
           const plantsPerTower = cap / towersCap;
           
-          const activeTx = appState.transplantLogs.find(t => t.row === log.row && t.status === "active");
+          const activeTx = appState.transplantLogs.find(t => {
+            if (t.status !== "active") return false;
+            if (isSoil) return t.row === "Soil" || t.row === "soil" || t.line === "Soil";
+            return parseInt(t.row) === parseInt(rowVal);
+          });
           if (activeTx) {
-            console.warn(`Row ${log.row} already occupied. Skipping remote transplant.`);
+            console.warn(`${isSoil ? "Soil Line" : "Row " + rowVal} already occupied. Skipping remote transplant.`);
             return;
           }
           
@@ -1529,7 +1716,7 @@ async function syncWithCloud() {
           const txLog = {
             id: "TX-" + (appState.transplantLogs.length + 1),
             date: log.date,
-            row: log.row,
+            row: rowVal,
             trayBatchId: log.batch,
             towersPlanted: log.towers || 126,
             plantsPlanted: (log.towers || 126) * plantsPerTower,
@@ -1545,10 +1732,13 @@ async function syncWithCloud() {
           mergedCount++;
           
         } else if (log.type === "harvest") {
+          const isSoil = (log.line === "Soil" || log.row === "Soil" || log.row === 0 || log.row === "0");
+          const rowVal = isSoil ? "Soil" : log.row;
+
           // Check duplicate
           const match = appState.harvestLogs.find(h => 
             h.supabaseId === log.id ||
-            (!h.supabaseId && h.row === log.row && h.date === log.date && h.stage === log.stage)
+            (!h.supabaseId && String(h.row).toLowerCase() === String(rowVal).toLowerCase() && h.date === log.date && h.stage === log.stage)
           );
           if (match) {
             if (!match.supabaseId) {
@@ -1558,14 +1748,18 @@ async function syncWithCloud() {
             return;
           }
           
-          const activeTx = appState.transplantLogs.find(t => t.row === log.row && t.status === "active");
+          const activeTx = appState.transplantLogs.find(t => {
+            if (t.status !== "active") return false;
+            if (isSoil) return t.row === "Soil" || t.row === "soil" || t.line === "Soil";
+            return parseInt(t.row) === parseInt(rowVal);
+          });
           const txId = activeTx ? activeTx.id : null;
           const cropName = activeTx ? activeTx.crop : (log.crop || "Unknown Crop");
           
           const hrvLog = {
             id: "HRV-" + (appState.harvestLogs.length + 1),
             date: log.date,
-            row: log.row,
+            row: rowVal,
             transplantLogId: txId,
             stage: log.stage,
             yieldKg: log.yield_kg,
@@ -1579,10 +1773,13 @@ async function syncWithCloud() {
           mergedCount++;
           
         } else if (log.type === "clear") {
+          const isSoil = (log.line === "Soil" || log.row === "Soil" || log.row === 0 || log.row === "0");
+          const rowVal = isSoil ? "Soil" : log.row;
+
           // Check duplicate
           const match = appState.clearLogs.find(c => 
             c.supabaseId === log.id ||
-            (!c.supabaseId && c.row === log.row && c.date === log.date)
+            (!c.supabaseId && String(c.row).toLowerCase() === String(rowVal).toLowerCase() && c.date === log.date)
           );
           if (match) {
             if (!match.supabaseId) {
@@ -1592,13 +1789,17 @@ async function syncWithCloud() {
             return;
           }
           
-          const activeTx = appState.transplantLogs.find(t => t.row === log.row && t.status === "active");
+          const activeTx = appState.transplantLogs.find(t => {
+            if (t.status !== "active") return false;
+            if (isSoil) return t.row === "Soil" || t.row === "soil" || t.line === "Soil";
+            return parseInt(t.row) === parseInt(rowVal);
+          });
           const txId = activeTx ? activeTx.id : null;
           
           const clrLog = {
             id: "CLR-" + (appState.clearLogs.length + 1),
             date: log.date,
-            row: log.row,
+            row: rowVal,
             transplantLogId: txId,
             reason: log.reason,
             loggedBy: log.logged_by || "System",
@@ -1619,8 +1820,34 @@ async function syncWithCloud() {
     }
   } catch (err) {
     console.error("Supabase sync detailed error:", err);
-    showToast("Operating locally. Supabase connection error: " + err.message, "info");
+    showToast("Cloud connection error: " + err.message, "danger");
   }
+}
+
+function copyViewOnlyTeamLink() {
+  const url = appState.settings.supabaseUrl || "";
+  const key = appState.settings.supabaseKey || "";
+  
+  let baseUrl = appState.settings.publicUrl;
+  if (!baseUrl) {
+    baseUrl = window.location.href.split("index.html")[0].split("?")[0];
+  }
+  
+  if (!baseUrl.endsWith("/")) {
+    baseUrl += "/";
+  }
+  
+  const finalBase = baseUrl + "index.html";
+  const params = new URLSearchParams();
+  params.set("mode", "view");
+  if (url) params.set("url", url);
+  if (key) params.set("key", key);
+  
+  const finalUrl = `${finalBase}?${params.toString()}`;
+  
+  navigator.clipboard.writeText(finalUrl)
+    .then(() => showToast("View-Only Team Link copied to clipboard!", "success"))
+    .catch(() => alert("Copy this View-Only link to share with your team:\n\n" + finalUrl));
 }
 
 // 13. EMPLOYEE CATALOG MANAGERS

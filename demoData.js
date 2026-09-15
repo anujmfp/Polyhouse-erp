@@ -322,6 +322,43 @@ const DemoDataGenerator = (() => {
       reason: "Cycle completed (3 harvests done)"
     });
 
+    // Active Soil Cultivation Record
+    state.sowingLogs.push({
+      id: "SOW-SOIL1",
+      crop: "Basil",
+      type: "sapling",
+      trayCount: 126,
+      sowDate: getDateOffset(-29),
+      readyDate: getDateOffset(-20),
+      status: "transplanted"
+    });
+    const tSoil = {
+      id: "TX-SOIL1",
+      date: getDateOffset(-20),
+      row: "Soil",
+      trayBatchId: "SOW-SOIL1",
+      batchId: "BAS" + getDateOffset(-20).split('-').slice(1).reverse().join(''),
+      towersPlanted: 126,
+      plantsPlanted: 5040,
+      crop: "Basil",
+      status: "active",
+      loggedBy: "Divyesh",
+      remarks: "Started in ground soil bed section"
+    };
+    state.transplantLogs.push(tSoil);
+    state.harvestLogs.push({
+      id: "HRV-SOIL1-S",
+      date: getDateOffset(-5),
+      row: "Soil",
+      transplantLogId: tSoil.id,
+      stage: "Shenda",
+      yieldKg: 0,
+      wasteKg: 12,
+      crop: "Basil",
+      loggedBy: "Satyam",
+      remarks: "Shenda cut pruning completed in soil beds"
+    });
+
     return state;
   };
 

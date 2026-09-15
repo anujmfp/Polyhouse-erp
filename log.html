@@ -425,7 +425,9 @@
       
       try {
         const cleanUrl = cloudConfig.url.endsWith('/') ? cloudConfig.url : cloudConfig.url + '/';
-        const endpoint = `${cleanUrl}rest/v1/polyhouse_logs?row=eq.${row}&type=eq.transplant&order=date.desc&limit=1`;
+        const isSoil = (row === "Soil" || row === "soil");
+        const rowFilter = isSoil ? 'line=eq.Soil' : `row=eq.${row}`;
+        const endpoint = `${cleanUrl}rest/v1/polyhouse_logs?${rowFilter}&type=eq.transplant&order=date.desc&limit=1`;
         
         const res = await fetch(endpoint, {
           headers: {
@@ -440,7 +442,7 @@
             const lastTx = data[0];
             
             // Check clearance
-            const clearEndpoint = `${cleanUrl}rest/v1/polyhouse_logs?row=eq.${row}&type=eq.clear&date=gte.${lastTx.date}&order=date.desc&limit=1`;
+            const clearEndpoint = `${cleanUrl}rest/v1/polyhouse_logs?${rowFilter}&type=eq.clear&date=gte.${lastTx.date}&order=date.desc&limit=1`;
             const clearRes = await fetch(clearEndpoint, {
               headers: {
                 'apikey': cloudConfig.key,
@@ -534,6 +536,25 @@
           };
           picker.appendChild(btn);
         }
+
+        // Dedicated Soil cultivation button
+        const soilBtn = document.createElement("button");
+        soilBtn.type = "button";
+        soilBtn.className = "picker-btn";
+        soilBtn.style.gridColumn = "span 2";
+        soilBtn.style.color = "#f59e0b";
+        soilBtn.style.fontWeight = "700";
+        soilBtn.style.fontSize = "0.75rem";
+        soilBtn.innerText = "🌱 Soil";
+        soilBtn.onclick = () => {
+          document.querySelectorAll(`#picker-${pickerId}-row .picker-btn`).forEach(b => b.classList.remove('active'));
+          soilBtn.classList.add('active');
+          selectedRow[mode] = "Soil";
+          if (mode === 'harvest') {
+            updateActiveCropForHarvest();
+          }
+        };
+        picker.appendChild(soilBtn);
       });
     }
 
@@ -688,13 +709,19 @@
           payload.trays = parseInt(document.getElementById("m-sow-trays").value);
           payload.reason = remark;
         } else if (actionType === "transplant") {
-          payload.row = selectedRow.transplant;
+          const rowVal = selectedRow.transplant;
+          const isSoil = (rowVal === "Soil" || rowVal === "soil");
+          payload.row = isSoil ? null : rowVal;
+          payload.line = isSoil ? "Soil" : null;
           payload.crop = document.getElementById("m-tx-crop").value;
           payload.batch = generatedTxBatchId;
           payload.towers = parseInt(document.getElementById("m-tx-towers").value);
           payload.reason = remark;
         } else if (actionType === "harvest") {
-          payload.row = selectedRow.harvest;
+          const rowVal = selectedRow.harvest;
+          const isSoil = (rowVal === "Soil" || rowVal === "soil");
+          payload.row = isSoil ? null : rowVal;
+          payload.line = isSoil ? "Soil" : null;
           payload.crop = activeHarvestDetails.crop;
           payload.batch = activeHarvestDetails.batch;
           payload.stage = document.getElementById("m-hrv-stage").value;
@@ -702,7 +729,10 @@
           payload.waste_kg = parseFloat(document.getElementById("m-hrv-waste").value || 0);
           payload.reason = remark;
         } else if (actionType === "clear") {
-          payload.row = selectedRow.clear;
+          const rowVal = selectedRow.clear;
+          const isSoil = (rowVal === "Soil" || rowVal === "soil");
+          payload.row = isSoil ? null : rowVal;
+          payload.line = isSoil ? "Soil" : null;
           payload.reason = document.getElementById("m-clr-reason").value + (remark ? " - " + remark : "");
         }
 
