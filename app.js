@@ -179,16 +179,36 @@ function getGerminationPeriod(type) {
     : parseInt(appState.settings.saplingGerminationDays);
 }
 
+// Helper: Get active transplant for a row with automatic conflict resolution
+function getActiveTransplantForRow(row) {
+  const isSoil = (row === "Soil" || row === "soil");
+  const matching = appState.transplantLogs.filter(t => {
+    if (t.status !== "active") return false;
+    if (isSoil) return t.row === "Soil" || t.row === "soil" || t.line === "Soil";
+    return parseInt(t.row) === parseInt(row);
+  });
+  if (matching.length === 0) return null;
+  if (matching.length > 1) {
+    // Sort descending: newest date first, then highest ID/supabaseId first
+    matching.sort((a, b) => {
+      const dDiff = new Date(b.date) - new Date(a.date);
+      if (dDiff !== 0) return dDiff;
+      const bId = b.supabaseId || parseInt(String(b.id).replace(/\D/g, '')) || 0;
+      const aId = a.supabaseId || parseInt(String(a.id).replace(/\D/g, '')) || 0;
+      return bId - aId;
+    });
+    // Mark older duplicates as completed so state remains clean
+    for (let i = 1; i < matching.length; i++) {
+      matching[i].status = "completed";
+    }
+  }
+  return matching[0];
+}
+
 // Compute dynamic row state
 function getRowState(row) {
   // Check if there is an active transplant log for this row (numeric row or "Soil")
-  const activeTx = appState.transplantLogs.find(tx => {
-    if (tx.status !== "active") return false;
-    if (row === "Soil" || row === "soil") {
-      return tx.row === "Soil" || tx.row === "soil" || tx.line === "Soil";
-    }
-    return parseInt(tx.row) === parseInt(row);
-  });
+  const activeTx = getActiveTransplantForRow(row);
   if (!activeTx) {
     return { status: "empty", label: "Empty", colorClass: "state-empty", data: null };
   }
@@ -616,12 +636,12 @@ function renderTrayDashboardList() {
   const listElement = document.getElementById("tray-status-list");
   listElement.innerHTML = "";
   
-  const activeSowings = appState.sowingLogs.filter(s => s.status === "germinating" || s.status === "ready");
+  const activeSowings = appState.sowingLogs.filter(s => (s.status === "germinating" || s.status === "ready") && s.trayCount > 0);
   
   if (activeSowings.length === 0) {
     listElement.innerHTML = `
       <div class="text-muted" style="text-align: center; padding: 20px; font-size: 0.85rem;">
-        No active sowing trays in germination.
+        No active sowing trays in germination or nursery.
       </div>
     `;
     document.getElementById("metric-ready-trays").innerText = "0";
@@ -652,10 +672,11 @@ function renderTrayDashboardList() {
       statusLabel = `${daysLeft} days remaining`;
     }
     
+    const initialCount = sow.initialTrayCount || sow.trayCount;
     item.innerHTML = `
       <div class="tray-meta">
         <span class="tray-title">${sow.id}: ${sow.crop}</span>
-        <span class="tray-subtitle">${sow.trayCount} Trays (${sow.trayCount * parseInt(appState.settings.trayCapacity)} net cups) | Sowed: ${sow.sowDate}</span>
+        <span class="tray-subtitle">${sow.trayCount} of ${initialCount} Trays remaining (${sow.trayCount * parseInt(appState.settings.trayCapacity)} plants) | Sowed: ${sow.sowDate}</span>
       </div>
       <span class="tray-badge ${badgeClass}">${statusLabel}</span>
     `;
@@ -781,11 +802,7 @@ function triggerQuickAction(row, stage) {
   const rowDisplayName = isSoil ? "Soil Line" : `Row ${row}`;
 
   // Find active transplant to prefill
-  const activeTx = appState.transplantLogs.find(tx => {
-    if (tx.status !== "active") return false;
-    if (isSoil) return tx.row === "Soil" || tx.row === "soil" || tx.line === "Soil";
-    return parseInt(tx.row) === parseInt(row);
-  });
+  const activeTx = getActiveTransplantForRow(row);
 
   if (!activeTx && stage !== "Clear") {
     showToast(`Error: No active crop found on ${rowDisplayName}.`, "danger");
@@ -876,15 +893,65 @@ function triggerQuickAction(row, stage) {
 }
 
 // 6. FORM LOGGING ACTIONS
+function deductTraysForTransplant(crop, traysNeeded, preferredBatchId = null) {
+  if (!traysNeeded || traysNeeded <= 0) return 0;
+  
+  let remainingNeeded = traysNeeded;
+  let totalDeducted = 0;
+
+  // 1. If a preferredBatchId is specified, try to deduct from it first
+  if (preferredBatchId) {
+    const prefBatch = appState.sowingLogs.find(s => s.id === preferredBatchId && s.trayCount > 0);
+    if (prefBatch) {
+      if (!prefBatch.initialTrayCount) prefBatch.initialTrayCount = prefBatch.trayCount;
+      if (prefBatch.trayCount <= remainingNeeded) {
+        totalDeducted += prefBatch.trayCount;
+        remainingNeeded -= prefBatch.trayCount;
+        prefBatch.trayCount = 0;
+        prefBatch.status = "transplanted";
+      } else {
+        prefBatch.trayCount -= remainingNeeded;
+        totalDeducted += remainingNeeded;
+        remainingNeeded = 0;
+      }
+    }
+  }
+
+  // 2. If there are still trays needed, deduct from ready/germinating batches of matching crop (FIFO - oldest sowDate first)
+  if (remainingNeeded > 0 && crop) {
+    const matchingSowings = appState.sowingLogs
+      .filter(s => s.crop && s.crop.toLowerCase() === crop.toLowerCase() && (s.status === "ready" || s.status === "germinating") && s.trayCount > 0)
+      .sort((a, b) => new Date(a.sowDate) - new Date(b.sowDate));
+
+    for (const batch of matchingSowings) {
+      if (remainingNeeded <= 0) break;
+      if (!batch.initialTrayCount) batch.initialTrayCount = batch.trayCount;
+      if (batch.trayCount <= remainingNeeded) {
+        totalDeducted += batch.trayCount;
+        remainingNeeded -= batch.trayCount;
+        batch.trayCount = 0;
+        batch.status = "transplanted";
+      } else {
+        batch.trayCount -= remainingNeeded;
+        totalDeducted += remainingNeeded;
+        remainingNeeded = 0;
+      }
+    }
+  }
+
+  return totalDeducted;
+}
+
 function updateTransplantBatchOptions(row) {
   const select = document.getElementById("tx-batch");
   select.innerHTML = '<option value="">-- Select Tray Batch --</option>';
   
-  const readySowings = appState.sowingLogs.filter(s => s.status === "ready" || s.status === "germinating");
+  const readySowings = appState.sowingLogs.filter(s => (s.status === "ready" || s.status === "germinating") && s.trayCount > 0);
   
   readySowings.forEach(s => {
     const isReady = new Date() >= new Date(s.readyDate);
-    const label = `${s.id} (${s.crop}) - ${s.trayCount} Trays [Sowed: ${s.sowDate}] ${isReady ? '(READY)' : '(GERMINATING)'}`;
+    const initialCount = s.initialTrayCount || s.trayCount;
+    const label = `${s.id} (${s.crop}) - ${s.trayCount} Trays remaining of ${initialCount} [Sowed: ${s.sowDate}] ${isReady ? '(READY)' : '(GERMINATING)'}`;
     select.innerHTML += `<option value="${s.id}">${label}</option>`;
   });
 }
@@ -978,11 +1045,7 @@ function setupFormHandlers() {
     }
     
     // Check if destination row is already occupied
-    const activeTx = appState.transplantLogs.find(t => {
-      if (t.status !== "active") return false;
-      if (isSoil) return t.row === "Soil" || t.row === "soil" || t.line === "Soil";
-      return parseInt(t.row) === parseInt(row);
-    });
+    const activeTx = getActiveTransplantForRow(row);
     if (activeTx) {
       showToast(`${isSoil ? "Soil Line" : "Row " + row} is already occupied! Clear it first.`, "danger");
       return;
@@ -1000,6 +1063,11 @@ function setupFormHandlers() {
     const towersCap = parseInt(appState.settings.towersPerLine);
     const plantsPerTower = cap / towersCap;
     const totalPlantsPlanted = towersPlanted * plantsPerTower;
+    const trayCap = parseInt(appState.settings.trayCapacity) || 40;
+    const traysUsed = Math.ceil(totalPlantsPlanted / trayCap);
+    
+    // Deduct trays from sowing batches
+    deductTraysForTransplant(sourceBatch.crop, traysUsed, sourceBatch.id);
     
     // Register transplant
     const cropInit = sourceBatch.crop.substring(0, 3).toUpperCase();
@@ -1014,13 +1082,11 @@ function setupFormHandlers() {
       batchId: generatedBatchId,
       towersPlanted,
       plantsPlanted: totalPlantsPlanted,
+      traysUsed,
       crop: sourceBatch.crop,
       status: "active",
       loggedBy: "Manager"
     };
-    
-    // Deduct trays or mark batch transplanted
-    sourceBatch.status = "transplanted";
     
     appState.transplantLogs.push(newTx);
     saveState();
@@ -1078,11 +1144,7 @@ function setupFormHandlers() {
     }
     
     // Find matching active transplant
-    const activeTx = appState.transplantLogs.find(t => {
-      if (t.status !== "active") return false;
-      if (isSoil) return t.row === "Soil" || t.row === "soil" || t.line === "Soil";
-      return parseInt(t.row) === parseInt(row);
-    });
+    const activeTx = getActiveTransplantForRow(row);
     if (!activeTx) {
       showToast(`No active crops currently on ${isSoil ? "Soil Line" : "Row " + row} to harvest.`, "danger");
       return;
@@ -1251,7 +1313,12 @@ function deleteLog(type, id) {
     if (tx) {
       targetLog = tx;
       const sow = appState.sowingLogs.find(s => s.id === tx.trayBatchId);
-      if (sow) sow.status = "ready";
+      if (sow) {
+        if (tx.traysUsed) {
+          sow.trayCount = (sow.trayCount || 0) + tx.traysUsed;
+        }
+        sow.status = "ready";
+      }
     }
     appState.transplantLogs = appState.transplantLogs.filter(t => t.id !== id);
   } else if (type === "Harvest") {
@@ -1699,35 +1766,57 @@ async function syncWithCloud() {
           const cap = getRowCapacity(rowVal);
           const towersCap = parseInt(appState.settings.towersPerLine);
           const plantsPerTower = cap / towersCap;
+          const towersPlanted = log.towers || 126;
+          const totalPlants = towersPlanted * plantsPerTower;
+          const trayCap = parseInt(appState.settings.trayCapacity) || 40;
+          const traysUsed = Math.ceil(totalPlants / trayCap);
           
-          const activeTx = appState.transplantLogs.find(t => {
-            if (t.status !== "active") return false;
-            if (isSoil) return t.row === "Soil" || t.row === "soil" || t.line === "Soil";
-            return parseInt(t.row) === parseInt(rowVal);
-          });
+          const activeTx = getActiveTransplantForRow(rowVal);
+          let txStatus = "active";
           if (activeTx) {
-            console.warn(`${isSoil ? "Soil Line" : "Row " + rowVal} already occupied. Skipping remote transplant.`);
-            return;
+            const incomingDate = new Date(log.date);
+            const activeDate = new Date(activeTx.date);
+            if (incomingDate > activeDate || (!activeTx.supabaseId && log.id)) {
+              // The incoming cloud transplant is newer or replaces unlinked local mock data:
+              activeTx.status = "completed";
+              txStatus = "active";
+            } else if (incomingDate < activeDate) {
+              // The incoming transplant was in the past before the currently active crop:
+              txStatus = "completed";
+            } else {
+              // Same date: if incoming has higher ID or activeTx had no supabaseId, incoming wins
+              const activeDbId = activeTx.supabaseId || 0;
+              const incomingDbId = log.id || 0;
+              if (!activeTx.supabaseId || incomingDbId >= activeDbId) {
+                activeTx.status = "completed";
+                txStatus = "active";
+              } else {
+                txStatus = "completed";
+              }
+            }
           }
           
           const sourceBatch = appState.sowingLogs.find(s => s.id === log.batch);
           const cropName = sourceBatch ? sourceBatch.crop : (log.crop || "Unknown Crop");
+          
+          // Deduct trays from matching sowing batches
+          deductTraysForTransplant(cropName, traysUsed, sourceBatch ? sourceBatch.id : null);
           
           const txLog = {
             id: "TX-" + (appState.transplantLogs.length + 1),
             date: log.date,
             row: rowVal,
             trayBatchId: log.batch,
-            towersPlanted: log.towers || 126,
-            plantsPlanted: (log.towers || 126) * plantsPerTower,
+            towersPlanted: towersPlanted,
+            plantsPlanted: totalPlants,
+            traysUsed: traysUsed,
             crop: cropName,
-            status: "active",
+            status: txStatus,
             loggedBy: log.logged_by || "System",
             supabaseId: log.id,
             remarks: log.reason || ""
           };
           
-          if (sourceBatch) sourceBatch.status = "transplanted";
           appState.transplantLogs.push(txLog);
           mergedCount++;
           
@@ -1748,11 +1837,7 @@ async function syncWithCloud() {
             return;
           }
           
-          const activeTx = appState.transplantLogs.find(t => {
-            if (t.status !== "active") return false;
-            if (isSoil) return t.row === "Soil" || t.row === "soil" || t.line === "Soil";
-            return parseInt(t.row) === parseInt(rowVal);
-          });
+          const activeTx = getActiveTransplantForRow(rowVal);
           const txId = activeTx ? activeTx.id : null;
           const cropName = activeTx ? activeTx.crop : (log.crop || "Unknown Crop");
           
@@ -1789,11 +1874,7 @@ async function syncWithCloud() {
             return;
           }
           
-          const activeTx = appState.transplantLogs.find(t => {
-            if (t.status !== "active") return false;
-            if (isSoil) return t.row === "Soil" || t.row === "soil" || t.line === "Soil";
-            return parseInt(t.row) === parseInt(rowVal);
-          });
+          const activeTx = getActiveTransplantForRow(rowVal);
           const txId = activeTx ? activeTx.id : null;
           
           const clrLog = {
@@ -1822,6 +1903,26 @@ async function syncWithCloud() {
     console.error("Supabase sync detailed error:", err);
     showToast("Cloud connection error: " + err.message, "danger");
   }
+async function resyncCloudFresh() {
+  const url = appState.settings.supabaseUrl;
+  const key = appState.settings.supabaseKey;
+  if (!url || !key) {
+    showToast("Please enter Supabase URL and Key in settings first.", "warning");
+    return;
+  }
+  if (!confirm("This will clean local browser cache and fetch all real logs directly from Supabase to ensure 100% data consistency between computer and mobile. Proceed?")) {
+    return;
+  }
+  // Clear local log caches while preserving configuration/settings
+  appState.sowingLogs = [];
+  appState.transplantLogs = [];
+  appState.harvestLogs = [];
+  appState.clearLogs = [];
+  localStorage.setItem("polyhouse_erp_state", JSON.stringify(appState));
+  showToast("Re-fetching clean database from Supabase...", "info");
+  await syncWithCloud();
+  refreshAll();
+  showToast("Cloud refresh complete! Your system board is now 100% matched with Supabase.", "success");
 }
 
 function copyViewOnlyTeamLink() {
@@ -2052,11 +2153,14 @@ function importParsedLogs() {
         
       } else if (item.action === "TRANSPLANT") {
         const sourceBatch = appState.sowingLogs.find(s => s.id === item.batch);
-        const cropName = sourceBatch ? sourceBatch.crop : "Unknown Crop";
+        const cropName = sourceBatch ? sourceBatch.crop : (item.crop || "Unknown Crop");
         
         const cap = getRowCapacity(item.row);
         const towersCap = parseInt(appState.settings.towersPerLine);
         const plantsPerTower = cap / towersCap;
+        const totalPlants = item.towers * plantsPerTower;
+        const trayCap = parseInt(appState.settings.trayCapacity) || 40;
+        const traysUsed = Math.ceil(totalPlants / trayCap);
         
         const activeTx = appState.transplantLogs.find(t => t.row === item.row && t.status === "active");
         if (activeTx) {
@@ -2064,20 +2168,23 @@ function importParsedLogs() {
           return;
         }
         
+        // Deduct trays from matching sowing batches
+        deductTraysForTransplant(cropName, traysUsed, sourceBatch ? sourceBatch.id : null);
+        
         const txLog = {
           id: "TX-" + (appState.transplantLogs.length + 1),
           date: item.date,
           row: item.row,
           trayBatchId: item.batch,
           towersPlanted: item.towers,
-          plantsPlanted: item.towers * plantsPerTower,
+          plantsPlanted: totalPlants,
+          traysUsed: traysUsed,
           crop: cropName,
           status: "active",
           loggedBy: item.raw.employee || item.raw.worker || "System",
           remarks: item.raw.remarks || item.raw.remark || ""
         };
         
-        if (sourceBatch) sourceBatch.status = "transplanted";
         appState.transplantLogs.push(txLog);
         importCount++;
         
