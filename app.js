@@ -1876,6 +1876,7 @@ async function syncWithCloud() {
         } else if (log.type === "transplant") {
           const isSoil = (log.line === "Soil" || log.row === "Soil" || log.row === 0 || log.row === "0");
           const rowVal = isSoil ? "Soil" : log.row;
+          const towersPlanted = log.towers || 126;
 
           // Check duplicate
           const match = appState.transplantLogs.find(t => 
@@ -1894,7 +1895,6 @@ async function syncWithCloud() {
           const cap = getRowCapacity(rowVal);
           const towersCap = parseInt(appState.settings.towersPerLine);
           const plantsPerTower = cap / towersCap;
-          const towersPlanted = log.towers || 126;
           const totalPlants = towersPlanted * plantsPerTower;
           const trayCap = parseInt(appState.settings.trayCapacity) || 40;
           const traysUsed = Math.ceil(totalPlants / trayCap);
