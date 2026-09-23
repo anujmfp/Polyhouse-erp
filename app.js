@@ -179,45 +179,74 @@ function getGerminationPeriod(type) {
     : parseInt(appState.settings.saplingGerminationDays);
 }
 
-// Helper: Get active transplant for a row with automatic conflict resolution
-function getActiveTransplantForRow(row) {
+// Helper: Get all active transplants for a row (supporting multi-crop shared rows)
+function getActiveTransplantsForRow(row) {
   const isSoil = (row === "Soil" || row === "soil");
   const matching = appState.transplantLogs.filter(t => {
     if (t.status !== "active") return false;
     if (isSoil) return t.row === "Soil" || t.row === "soil" || t.line === "Soil";
     return parseInt(t.row) === parseInt(row);
   });
-  if (matching.length === 0) return null;
-  if (matching.length > 1) {
-    // Sort descending: newest date first, then highest ID/supabaseId first
-    matching.sort((a, b) => {
-      const dDiff = new Date(b.date) - new Date(a.date);
-      if (dDiff !== 0) return dDiff;
-      const bId = b.supabaseId || parseInt(String(b.id).replace(/\D/g, '')) || 0;
-      const aId = a.supabaseId || parseInt(String(a.id).replace(/\D/g, '')) || 0;
-      return bId - aId;
+  if (matching.length === 0) return [];
+  if (matching.length === 1) return matching;
+
+  // Deduplicate exact same crop/batch/date duplicates if any
+  const unique = [];
+  const seenKeys = new Set();
+  matching.forEach(t => {
+    const key = `${t.crop}_${t.date}_${t.trayBatchId || t.batchId || ''}`;
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      unique.push(t);
+    } else {
+      t.status = "completed"; // Retire duplicate entry
+    }
+  });
+
+  // Sort chronologically: oldest first for sequential tower mapping
+  unique.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  // Check total towers capacity
+  const maxTowers = isSoil ? 126 : parseInt(appState.settings.towersPerLine || 126);
+  let totalTowers = 0;
+  const validActive = [];
+
+  // If a recent full-row transplant exists (e.g. 126 towers like Row 12 Basil), it supersedes prior crops
+  const fullRowTx = unique.slice().reverse().find(t => t.towersPlanted >= maxTowers);
+  if (fullRowTx) {
+    unique.forEach(t => {
+      if (t.id !== fullRowTx.id && new Date(t.date) <= new Date(fullRowTx.date)) {
+        t.status = "completed";
+      }
     });
-    // Mark older duplicates as completed so state remains clean
-    for (let i = 1; i < matching.length; i++) {
-      matching[i].status = "completed";
+    return [fullRowTx];
+  }
+
+  // Otherwise, accumulate partial crops (e.g. 55 Mint + 55 Coriander = 110 <= 126)
+  for (const tx of unique) {
+    if (totalTowers + tx.towersPlanted <= maxTowers) {
+      validActive.push(tx);
+      totalTowers += tx.towersPlanted;
+    } else {
+      tx.status = "completed";
     }
   }
-  return matching[0];
+
+  return validActive;
 }
 
-// Compute dynamic row state
-function getRowState(row) {
-  // Check if there is an active transplant log for this row (numeric row or "Soil")
-  const activeTx = getActiveTransplantForRow(row);
-  if (!activeTx) {
-    return { status: "empty", label: "Empty", colorClass: "state-empty", data: null };
-  }
+// Convenience wrapper for single active tx (returns latest if multiple)
+function getActiveTransplantForRow(row) {
+  const activeList = getActiveTransplantsForRow(row);
+  if (activeList.length === 0) return null;
+  return activeList[activeList.length - 1]; // Return latest active
+}
 
-  // Find all harvest operations for this specific transplant log
-  const harvests = appState.harvestLogs.filter(h => h.transplantLogId === activeTx.id);
+// Compute individual crop lifecycle state
+function computeCropLifecycle(activeTx) {
+  if (!activeTx) return null;
+  const harvests = appState.harvestLogs.filter(h => h.transplantLogId === activeTx.id || (!h.transplantLogId && String(h.row) === String(activeTx.row) && h.crop === activeTx.crop));
   const shendaCut = harvests.find(h => h.stage === "Shenda");
-  
-  // Count commercial harvests
   const commHarvestsCount = harvests.filter(h => h.stage.startsWith("Harvest")).length;
   
   const today = new Date();
@@ -250,9 +279,8 @@ function getRowState(row) {
   
   // 2. Commercial harvest phases
   let lastEventDate = new Date(shendaCut.date);
-  let currentStageNumber = commHarvestsCount + 1; // Stage we are heading towards (1, 2, or 3)
+  let currentStageNumber = commHarvestsCount + 1;
   
-  // If some harvests were already logged, baseline off the last harvest date
   if (commHarvestsCount > 0) {
     const loggedHarvests = harvests.filter(h => h.stage.startsWith("Harvest")).sort((a,b) => new Date(a.date) - new Date(b.date));
     lastEventDate = new Date(loggedHarvests[loggedHarvests.length - 1].date);
@@ -261,7 +289,6 @@ function getRowState(row) {
   if (currentStageNumber <= parseInt(appState.settings.totalHarvests)) {
     const harvestDueDate = new Date(lastEventDate);
     harvestDueDate.setDate(harvestDueDate.getDate() + parseInt(appState.settings.harvestIntervalDays));
-    
     const stageLabel = `Harvest ${currentStageNumber}`;
     
     if (today >= harvestDueDate) {
@@ -277,7 +304,6 @@ function getRowState(row) {
       const daysLeft = Math.ceil((harvestDueDate - today) / (1000 * 60 * 60 * 24));
       const prevStageLabel = commHarvestsCount === 0 ? "Shenda Done" : `Harvest ${commHarvestsCount} Done`;
       
-      // Select appropriate color representation
       let cClass = "state-shenda";
       if (commHarvestsCount === 1) cClass = "state-harvest1";
       if (commHarvestsCount === 2) cClass = "state-harvest2";
@@ -296,7 +322,43 @@ function getRowState(row) {
     status: "harvest-completed", 
     label: "3 Harvests Completed (Ready to Clear)", 
     colorClass: "state-harvest3", 
-    data: activeTx 
+    data: activeTx,
+    nextStage: "Clear"
+  };
+}
+
+// Compute dynamic row state (single or multi-crop)
+function getRowState(row) {
+  const activeTxs = getActiveTransplantsForRow(row);
+  if (activeTxs.length === 0) {
+    return { status: "empty", label: "Empty", colorClass: "state-empty", data: null, crops: [] };
+  }
+  
+  const cropLifecycles = activeTxs.map(tx => computeCropLifecycle(tx));
+  
+  if (cropLifecycles.length === 1) {
+    const single = cropLifecycles[0];
+    single.crops = cropLifecycles;
+    single.totalOccupied = single.data.towersPlanted;
+    return single;
+  }
+  
+  // Multi-crop row (e.g. Row 17: Mint 55 + Coriander 55 = 110)
+  const totalOccupied = activeTxs.reduce((sum, tx) => sum + (tx.towersPlanted || 0), 0);
+  const cropSummary = activeTxs.map(tx => `${tx.crop} (${tx.towersPlanted})`).join(" + ");
+  
+  const readyCrop = cropLifecycles.find(c => c.status.startsWith("ready"));
+  const primaryState = readyCrop || cropLifecycles[cropLifecycles.length - 1];
+  
+  return {
+    status: primaryState.status,
+    label: `${cropSummary} [${totalOccupied}/126]`,
+    colorClass: primaryState.colorClass,
+    data: primaryState.data,
+    nextStage: primaryState.nextStage,
+    crops: cropLifecycles,
+    isMultiCrop: true,
+    totalOccupied
   };
 }
 
@@ -393,9 +455,16 @@ function renderDashboard() {
     const rowDiv = document.createElement("div");
     rowDiv.className = "row-container";
     
+    const rowDetails = getRowState(r);
+    
     const rowLabel = document.createElement("div");
     rowLabel.className = "row-label";
-    rowLabel.innerText = `Row ${r}`;
+    if (rowDetails.isMultiCrop) {
+      rowLabel.innerText = `Row ${r} (${rowDetails.totalOccupied}/${towersCount})`;
+      rowLabel.title = rowDetails.crops.map(c => `${c.data.crop}: ${c.data.towersPlanted} towers`).join(", ");
+    } else {
+      rowLabel.innerText = `Row ${r}`;
+    }
     rowDiv.appendChild(rowLabel);
     
     const linesWrapper = document.createElement("div");
@@ -404,58 +473,71 @@ function renderDashboard() {
     const towersGrid = document.createElement("div");
     towersGrid.className = "towers-grid";
     
-    const rowDetails = getRowState(r);
-    
     if (rowDetails.status === "empty") {
       emptyLinesCount++;
       emptyLinesList.push(`Row ${r}`);
     } else {
-      const tx = rowDetails.data;
-      occupiedTowers += tx.towersPlanted;
-      totalActivePlants += tx.plantsPlanted;
-      
-      if (!activePlantVarieties[tx.crop]) activePlantVarieties[tx.crop] = 0;
-      activePlantVarieties[tx.crop] += tx.plantsPlanted;
-      
-      // Expected yield computations
-      if (rowDetails.status.startsWith("ready-harvest") || rowDetails.status.startsWith("growing")) {
-        expectedYieldAccumulator += getExpectedYieldForActiveLine(tx);
-      }
-      
-      // Check if ready for operational actions (Shenda/Harvest)
-      if (rowDetails.status.startsWith("ready")) {
-        readyLinesList.push({
-          row: r,
-          crop: tx.crop,
-          stage: rowDetails.nextStage,
-          plants: tx.plantsPlanted,
-          txId: tx.id,
-          label: rowDetails.label
-        });
-      }
+      const activeCrops = rowDetails.crops && rowDetails.crops.length > 0 ? rowDetails.crops : [rowDetails];
+      activeCrops.forEach(cropInfo => {
+        const tx = cropInfo.data;
+        occupiedTowers += tx.towersPlanted;
+        totalActivePlants += tx.plantsPlanted;
+        
+        if (!activePlantVarieties[tx.crop]) activePlantVarieties[tx.crop] = 0;
+        activePlantVarieties[tx.crop] += tx.plantsPlanted;
+        
+        // Expected yield computations
+        if (cropInfo.status.startsWith("ready-harvest") || cropInfo.status.startsWith("growing")) {
+          expectedYieldAccumulator += getExpectedYieldForActiveLine(tx);
+        }
+        
+        // Check if ready for operational actions (Shenda/Harvest)
+        if (cropInfo.status.startsWith("ready")) {
+          readyLinesList.push({
+            row: r,
+            crop: tx.crop,
+            stage: cropInfo.nextStage,
+            plants: tx.plantsPlanted,
+            txId: tx.id,
+            label: cropInfo.label
+          });
+        }
+      });
     }
     
-    // Render tower cells
-    const capacityPerTower = rowCap / towersCount;
-    const towersPlantedInRow = rowDetails.status !== "empty" ? rowDetails.data.towersPlanted : 0;
+    // Render tower cells with sequential multi-crop mapping
+    const towerAssignments = new Array(towersCount + 1).fill(null);
+    let towerCursor = 1;
+    if (rowDetails.crops && rowDetails.crops.length > 0) {
+      rowDetails.crops.forEach(cropInfo => {
+        const count = cropInfo.data.towersPlanted || 0;
+        const endTower = Math.min(towersCount, towerCursor + count - 1);
+        for (let t = towerCursor; t <= endTower; t++) {
+          towerAssignments[t] = cropInfo;
+        }
+        towerCursor = endTower + 1;
+      });
+    }
     
     for (let t = 1; t <= towersCount; t++) {
       const cell = document.createElement("div");
       cell.className = "tower-cell";
+      const assignedCrop = towerAssignments[t];
       
-      // Color distribution depending on towers planted
-      if (rowDetails.status !== "empty" && t <= towersPlantedInRow) {
-        cell.className += ` ${rowDetails.colorClass}`;
-        cell.title = `Tower ${t}: ${rowDetails.data.crop} - ${rowDetails.label}`;
+      if (assignedCrop) {
+        cell.className += ` ${assignedCrop.colorClass}`;
+        cell.title = `Tower ${t}: ${assignedCrop.data.crop} (${assignedCrop.data.towersPlanted} towers) - ${assignedCrop.label}`;
+        cell.addEventListener("click", () => {
+          openLineModal(r, assignedCrop);
+        });
       } else {
         cell.className += ` state-empty`;
-        cell.title = `Tower ${t}: Empty`;
+        const remTowers = towersCount - Math.min(towersCount, towerCursor - 1);
+        cell.title = `Tower ${t}: Empty (${remTowers} towers available in Row ${r})`;
+        cell.addEventListener("click", () => {
+          openLineModal(r, rowDetails);
+        });
       }
-      
-      // Open row modal when clicking any tower in that row
-      cell.addEventListener("click", () => {
-        openLineModal(r, rowDetails);
-      });
       
       towersGrid.appendChild(cell);
     }
@@ -489,45 +571,63 @@ function renderDashboard() {
     emptyLinesCount++;
     emptyLinesList.push("Soil");
   } else {
-    const tx = soilDetails.data;
-    occupiedTowers += tx.towersPlanted;
-    totalActivePlants += tx.plantsPlanted;
-    
-    if (!activePlantVarieties[tx.crop]) activePlantVarieties[tx.crop] = 0;
-    activePlantVarieties[tx.crop] += tx.plantsPlanted;
-    
-    if (soilDetails.status.startsWith("ready-harvest") || soilDetails.status.startsWith("growing")) {
-      expectedYieldAccumulator += getExpectedYieldForActiveLine(tx);
-    }
-    
-    if (soilDetails.status.startsWith("ready")) {
-      readyLinesList.push({
-        row: "Soil",
-        crop: tx.crop,
-        stage: soilDetails.nextStage,
-        plants: tx.plantsPlanted,
-        txId: tx.id,
-        label: soilDetails.label
-      });
-    }
+    const activeSoilCrops = soilDetails.crops && soilDetails.crops.length > 0 ? soilDetails.crops : [soilDetails];
+    activeSoilCrops.forEach(cropInfo => {
+      const tx = cropInfo.data;
+      occupiedTowers += tx.towersPlanted;
+      totalActivePlants += tx.plantsPlanted;
+      
+      if (!activePlantVarieties[tx.crop]) activePlantVarieties[tx.crop] = 0;
+      activePlantVarieties[tx.crop] += tx.plantsPlanted;
+      
+      if (cropInfo.status.startsWith("ready-harvest") || cropInfo.status.startsWith("growing")) {
+        expectedYieldAccumulator += getExpectedYieldForActiveLine(tx);
+      }
+      
+      if (cropInfo.status.startsWith("ready")) {
+        readyLinesList.push({
+          row: "Soil",
+          crop: tx.crop,
+          stage: cropInfo.nextStage,
+          plants: tx.plantsPlanted,
+          txId: tx.id,
+          label: cropInfo.label
+        });
+      }
+    });
   }
   
-  const soilPlantedCount = soilDetails.status !== "empty" ? soilDetails.data.towersPlanted : 0;
+  const soilTowerAssignments = new Array(soilTowersCount + 1).fill(null);
+  let soilTowerCursor = 1;
+  if (soilDetails.crops && soilDetails.crops.length > 0) {
+    soilDetails.crops.forEach(cropInfo => {
+      const count = cropInfo.data.towersPlanted || 0;
+      const endTower = Math.min(soilTowersCount, soilTowerCursor + count - 1);
+      for (let t = soilTowerCursor; t <= endTower; t++) {
+        soilTowerAssignments[t] = cropInfo;
+      }
+      soilTowerCursor = endTower + 1;
+    });
+  }
+
   for (let t = 1; t <= soilTowersCount; t++) {
     const cell = document.createElement("div");
     cell.className = "tower-cell";
+    const assignedCrop = soilTowerAssignments[t];
     
-    if (soilDetails.status !== "empty" && t <= soilPlantedCount) {
-      cell.className += ` ${soilDetails.colorClass}`;
-      cell.title = `Soil Slot ${t}: ${soilDetails.data.crop} - ${soilDetails.label}`;
+    if (assignedCrop) {
+      cell.className += ` ${assignedCrop.colorClass}`;
+      cell.title = `Soil Slot ${t}: ${assignedCrop.data.crop} (${assignedCrop.data.towersPlanted} slots) - ${assignedCrop.label}`;
+      cell.addEventListener("click", () => {
+        openLineModal("Soil", assignedCrop);
+      });
     } else {
       cell.className += ` state-empty`;
       cell.title = `Soil Slot ${t}: Empty`;
+      cell.addEventListener("click", () => {
+        openLineModal("Soil", soilDetails);
+      });
     }
-    
-    cell.addEventListener("click", () => {
-      openLineModal("Soil", soilDetails);
-    });
     
     soilTowersGrid.appendChild(cell);
   }
@@ -720,6 +820,25 @@ function openLineModal(row, details) {
         </button>
       `;
     }
+  } else if (details.isMultiCrop && !details.data) {
+    let multiCropHtml = `<p style="margin-bottom: 8px;"><strong>Status:</strong> Mixed Crop Row (${details.totalOccupied}/${appState.settings.towersPerLine} towers occupied)</p>`;
+    multiCropHtml += `<div style="display:flex; flex-direction:column; gap:12px; margin-top:10px;">`;
+    details.crops.forEach(c => {
+      multiCropHtml += `
+        <div style="background: rgba(255,255,255,0.04); border:1px solid var(--border-color); border-radius:8px; padding:10px;">
+          <h5 style="margin:0 0 6px 0; font-size:0.9rem; color:var(--text-primary); font-weight:600;">🌿 ${c.data.crop} (${c.data.towersPlanted} towers)</h5>
+          <div style="font-size:0.8rem; color:var(--text-secondary); line-height:1.5;">
+            <div><strong>Status:</strong> <span style="color:var(--color-${c.colorClass.split('-').pop()}); font-weight:600;">${c.label}</span></div>
+            <div><strong>Transplanted:</strong> ${c.data.date} (${c.data.plantsPlanted} plants)</div>
+          </div>
+        </div>
+      `;
+    });
+    multiCropHtml += `</div>`;
+    info.innerHTML = multiCropHtml;
+    actions.innerHTML = `
+      <button class="btn-secondary" style="width:100%;" onclick="closeLineModal()">Close</button>
+    `;
   } else {
     const tx = details.data;
     const harvests = appState.harvestLogs.filter(h => h.transplantLogId === tx.id);
@@ -1044,10 +1163,18 @@ function setupFormHandlers() {
       return;
     }
     
-    // Check if destination row is already occupied
-    const activeTx = getActiveTransplantForRow(row);
-    if (activeTx) {
-      showToast(`${isSoil ? "Soil Line" : "Row " + row} is already occupied! Clear it first.`, "danger");
+    // Check if destination row has available capacity
+    const maxTowers = isSoil ? 126 : parseInt(appState.settings.towersPerLine || 126);
+    const activeTxs = getActiveTransplantsForRow(row);
+    const occupiedTowers = activeTxs.reduce((sum, t) => sum + (t.towersPlanted || 0), 0);
+    const availableTowers = maxTowers - occupiedTowers;
+    
+    if (availableTowers <= 0) {
+      showToast(`${isSoil ? "Soil Line" : "Row " + row} is fully occupied (${maxTowers}/${maxTowers} towers). Clear it first.`, "danger");
+      return;
+    }
+    if (towersPlanted > availableTowers) {
+      showToast(`Only ${availableTowers} towers available in ${isSoil ? "Soil Line" : "Row " + row} (${occupiedTowers}/${maxTowers} occupied). Please plant ${availableTowers} or fewer towers.`, "warning");
       return;
     }
     
@@ -1753,7 +1880,8 @@ async function syncWithCloud() {
           // Check duplicate
           const match = appState.transplantLogs.find(t => 
             t.supabaseId === log.id ||
-            (!t.supabaseId && String(t.row).toLowerCase() === String(rowVal).toLowerCase() && t.date === log.date && t.trayBatchId === log.batch)
+            (!t.supabaseId && String(t.row).toLowerCase() === String(rowVal).toLowerCase() && t.date === log.date && t.trayBatchId === log.batch) ||
+            (String(t.row).toLowerCase() === String(rowVal).toLowerCase() && t.date === log.date && t.crop && (t.crop.toLowerCase() === (log.crop || '').toLowerCase()) && t.towersPlanted === towersPlanted)
           );
           if (match) {
             if (!match.supabaseId) {
@@ -1771,29 +1899,30 @@ async function syncWithCloud() {
           const trayCap = parseInt(appState.settings.trayCapacity) || 40;
           const traysUsed = Math.ceil(totalPlants / trayCap);
           
-          const activeTx = getActiveTransplantForRow(rowVal);
+          const maxCapacity = isSoil ? 126 : parseInt(appState.settings.towersPerLine || 126);
+          const activeTxs = getActiveTransplantsForRow(rowVal);
+          const currentOccupied = activeTxs.reduce((sum, t) => sum + (t.towersPlanted || 0), 0);
+          
           let txStatus = "active";
-          if (activeTx) {
+          if (towersPlanted >= maxCapacity) {
+            // Full row transplant (e.g. 126 towers like Row 12 Basil) -> supersedes prior crops on this row
+            activeTxs.forEach(t => {
+              t.status = "completed";
+            });
+            txStatus = "active";
+          } else if (currentOccupied + towersPlanted <= maxCapacity) {
+            // Partial transplant that fits in available capacity (e.g. Row 17: Mint 55 + Coriander 55 = 110 <= 126)
+            // Both stay active!
+            txStatus = "active";
+          } else {
+            // Exceeds remaining capacity: check if incoming is newer than existing active crops
             const incomingDate = new Date(log.date);
-            const activeDate = new Date(activeTx.date);
-            if (incomingDate > activeDate || (!activeTx.supabaseId && log.id)) {
-              // The incoming cloud transplant is newer or replaces unlinked local mock data:
-              activeTx.status = "completed";
-              txStatus = "active";
-            } else if (incomingDate < activeDate) {
-              // The incoming transplant was in the past before the currently active crop:
-              txStatus = "completed";
-            } else {
-              // Same date: if incoming has higher ID or activeTx had no supabaseId, incoming wins
-              const activeDbId = activeTx.supabaseId || 0;
-              const incomingDbId = log.id || 0;
-              if (!activeTx.supabaseId || incomingDbId >= activeDbId) {
-                activeTx.status = "completed";
-                txStatus = "active";
-              } else {
-                txStatus = "completed";
+            activeTxs.forEach(t => {
+              if (incomingDate > new Date(t.date) || !t.supabaseId) {
+                t.status = "completed";
               }
-            }
+            });
+            txStatus = "active";
           }
           
           const sourceBatch = appState.sowingLogs.find(s => s.id === log.batch);
@@ -1837,7 +1966,8 @@ async function syncWithCloud() {
             return;
           }
           
-          const activeTx = getActiveTransplantForRow(rowVal);
+          const activeTxs = getActiveTransplantsForRow(rowVal);
+          const activeTx = (log.crop ? activeTxs.find(t => t.crop && t.crop.toLowerCase() === log.crop.toLowerCase()) : null) || activeTxs[0] || null;
           const txId = activeTx ? activeTx.id : null;
           const cropName = activeTx ? activeTx.crop : (log.crop || "Unknown Crop");
           
@@ -1874,20 +2004,24 @@ async function syncWithCloud() {
             return;
           }
           
-          const activeTx = getActiveTransplantForRow(rowVal);
-          const txId = activeTx ? activeTx.id : null;
+          const activeTxs = getActiveTransplantsForRow(rowVal);
+          const targetTx = (log.crop ? activeTxs.find(t => t.crop && t.crop.toLowerCase() === log.crop.toLowerCase()) : null) || null;
           
           const clrLog = {
             id: "CLR-" + (appState.clearLogs.length + 1),
             date: log.date,
             row: rowVal,
-            transplantLogId: txId,
+            transplantLogId: targetTx ? targetTx.id : (activeTxs[0] ? activeTxs[0].id : null),
             reason: log.reason,
             loggedBy: log.logged_by || "System",
             supabaseId: log.id
           };
           
-          if (activeTx) activeTx.status = "completed";
+          if (targetTx) {
+            targetTx.status = "completed";
+          } else {
+            activeTxs.forEach(t => { t.status = "completed"; });
+          }
           appState.clearLogs.push(clrLog);
           mergedCount++;
         }
