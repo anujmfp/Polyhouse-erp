@@ -1903,6 +1903,8 @@ async function syncWithCloud() {
     console.error("Supabase sync detailed error:", err);
     showToast("Cloud connection error: " + err.message, "danger");
   }
+}
+
 async function resyncCloudFresh() {
   const url = appState.settings.supabaseUrl;
   const key = appState.settings.supabaseKey;
