@@ -126,6 +126,20 @@ function initStorage() {
   } catch (e) {
     console.warn("Could not parse URL query parameters:", e);
   }
+
+  // Reconcile and self-heal all row active statuses from stored logs
+  reconcileAllRowStates();
+}
+
+// Reconciles and self-heals active row crops across all rows and Soil
+function reconcileAllRowStates() {
+  if (!appState || !appState.transplantLogs) return;
+  const numRows = parseInt(appState.settings.rows || 19);
+  for (let r = 1; r <= numRows; r++) {
+    getActiveTransplantsForRow(r);
+  }
+  getActiveTransplantsForRow("Soil");
+  localStorage.setItem("polyhouse_erp_state", JSON.stringify(appState));
 }
 
 function saveState() {
@@ -182,19 +196,19 @@ function getGerminationPeriod(type) {
 // Helper: Get all active transplants for a row (supporting multi-crop shared rows)
 function getActiveTransplantsForRow(row) {
   const isSoil = (row === "Soil" || row === "soil");
-  const matching = appState.transplantLogs.filter(t => {
-    if (t.status !== "active") return false;
+  
+  // Find all transplants for this row
+  const rowTxs = appState.transplantLogs.filter(t => {
     if (isSoil) return t.row === "Soil" || t.row === "soil" || t.line === "Soil";
     return parseInt(t.row) === parseInt(row);
   });
-  if (matching.length === 0) return [];
-  if (matching.length === 1) return matching;
+  if (rowTxs.length === 0) return [];
 
-  // Deduplicate exact same crop/batch/date duplicates if any
+  // 1. Deduplicate exact same crop/batch/date/towers duplicates (e.g. Supabase ID 62 vs 66)
   const unique = [];
   const seenKeys = new Set();
-  matching.forEach(t => {
-    const key = `${t.crop}_${t.date}_${t.trayBatchId || t.batchId || ''}`;
+  rowTxs.forEach(t => {
+    const key = `${(t.crop || '').toLowerCase()}_${t.date}_${t.towersPlanted}`;
     if (!seenKeys.has(key)) {
       seenKeys.add(key);
       unique.push(t);
@@ -203,36 +217,54 @@ function getActiveTransplantsForRow(row) {
     }
   });
 
-  // Sort chronologically: oldest first for sequential tower mapping
-  unique.sort((a, b) => new Date(a.date) - new Date(b.date));
+  // 2. Sort chronologically: oldest first
+  unique.sort((a, b) => {
+    const diff = new Date(a.date) - new Date(b.date);
+    if (diff !== 0) return diff;
+    return (a.supabaseId || 0) - (b.supabaseId || 0);
+  });
 
-  // Check total towers capacity
   const maxTowers = isSoil ? 126 : parseInt(appState.settings.towersPerLine || 126);
-  let totalTowers = 0;
-  const validActive = [];
 
-  // If a recent full-row transplant exists (e.g. 126 towers like Row 12 Basil), it supersedes prior crops
-  const fullRowTx = unique.slice().reverse().find(t => t.towersPlanted >= maxTowers);
-  if (fullRowTx) {
-    unique.forEach(t => {
-      if (t.id !== fullRowTx.id && new Date(t.date) <= new Date(fullRowTx.date)) {
-        t.status = "completed";
-      }
+  // 3. Filter out any transplant that was explicitly cleared AFTER its transplant date
+  const uncleared = unique.filter(t => {
+    const isCleared = appState.clearLogs.some(c => {
+      if (c.transplantLogId && c.transplantLogId === t.id) return true;
+      const rowMatch = isSoil ? (c.row === "Soil" || c.row === "soil" || c.line === "Soil") : (parseInt(c.row) === parseInt(row));
+      if (!rowMatch) return false;
+      if (c.crop && t.crop && c.crop.toLowerCase() !== t.crop.toLowerCase()) return false;
+      return new Date(c.date) >= new Date(t.date);
     });
-    return [fullRowTx];
+    return !isCleared;
+  });
+
+  if (uncleared.length === 0) return [];
+
+  // 4. Full-row transplant (e.g. >= 126 towers like Row 12 Basil) supersedes all transplants older than it
+  const fullRowIndex = uncleared.map(t => (t.towersPlanted || 0) >= maxTowers).lastIndexOf(true);
+  let candidates = uncleared;
+  if (fullRowIndex !== -1) {
+    uncleared.slice(0, fullRowIndex).forEach(t => { t.status = "completed"; });
+    candidates = uncleared.slice(fullRowIndex);
   }
 
-  // Otherwise, accumulate partial crops (e.g. 55 Mint + 55 Coriander = 110 <= 126)
-  for (const tx of unique) {
-    if (totalTowers + tx.towersPlanted <= maxTowers) {
-      validActive.push(tx);
-      totalTowers += tx.towersPlanted;
+  // 5. Work backwards from newest to oldest, taking crops that fit within maxTowers capacity
+  const reversed = candidates.slice().reverse();
+  let remainingCapacity = maxTowers;
+  const activeList = [];
+
+  for (const tx of reversed) {
+    const towers = tx.towersPlanted || maxTowers;
+    if (towers <= remainingCapacity) {
+      activeList.unshift(tx); // prepend so activeList remains sorted oldest -> newest
+      remainingCapacity -= towers;
+      tx.status = "active"; // Self-heal: ensure active status in memory and storage
     } else {
-      tx.status = "completed";
+      tx.status = "completed"; // Older crop displaced by newer planting
     }
   }
 
-  return validActive;
+  return activeList;
 }
 
 // Convenience wrapper for single active tx (returns latest if multiple)
@@ -1885,8 +1917,20 @@ async function syncWithCloud() {
             (String(t.row).toLowerCase() === String(rowVal).toLowerCase() && t.date === log.date && t.crop && (t.crop.toLowerCase() === (log.crop || '').toLowerCase()) && t.towersPlanted === towersPlanted)
           );
           if (match) {
+            let changed = false;
             if (!match.supabaseId) {
               match.supabaseId = log.id;
+              changed = true;
+            }
+            if (log.crop && (!match.crop || match.crop === "Unknown Crop")) {
+              match.crop = log.crop;
+              changed = true;
+            }
+            if (towersPlanted && (!match.towersPlanted || match.towersPlanted !== towersPlanted)) {
+              match.towersPlanted = towersPlanted;
+              changed = true;
+            }
+            if (changed) {
               localStorage.setItem("polyhouse_erp_state", JSON.stringify(appState));
             }
             return;
@@ -2027,9 +2071,11 @@ async function syncWithCloud() {
         }
       });
       
+      // Always reconcile row statuses across all rows and refresh UI
+      reconcileAllRowStates();
+      refreshAll();
+      
       if (mergedCount > 0) {
-        localStorage.setItem("polyhouse_erp_state", JSON.stringify(appState));
-        refreshAll();
         showToast(`Cloud Sync: Synced ${mergedCount} operations from Supabase.`, "success");
       }
     }
