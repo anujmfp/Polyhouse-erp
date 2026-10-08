@@ -60,15 +60,47 @@ function initStorage() {
   if (stored) {
     try {
       appState = JSON.parse(stored);
-      // Ensure cloud settings structure exists
+      // Ensure cloud settings and layout defaults structure exists
       let needsSave = false;
-      if (!appState.settings.supabaseUrl) { appState.settings.supabaseUrl = ""; needsSave = true; }
-      if (!appState.settings.supabaseKey) { appState.settings.supabaseKey = ""; needsSave = true; }
-      if (!appState.settings.whatsappPhone) { appState.settings.whatsappPhone = ""; needsSave = true; }
-      if (!appState.settings.publicUrl) { appState.settings.publicUrl = ""; needsSave = true; }
-      if (!appState.settings.employeeCatalog) { 
-        appState.settings.employeeCatalog = ["Divyesh", "Satyam", "Anuj"]; 
-        needsSave = true; 
+      const defaultSettings = {
+        rows: 19,
+        towersPerLine: 126,
+        rows1to7Holders: 10,
+        rows1to7PlantsPerHolder: 4,
+        rows8to19Holders: 15,
+        rows8to19PlantsPerHolder: 4,
+        trayCapacity: 40,
+        seedGerminationDays: 25,
+        saplingGerminationDays: 9,
+        transplantToShendaDays: 15,
+        harvestIntervalDays: 25,
+        totalHarvests: 3,
+        defaultExpectedYieldPerPlant: 0.15,
+        cropCatalog: ["Basil", "Mint", "Oregano", "Coriander", "Centella"],
+        supabaseUrl: "",
+        supabaseKey: "",
+        whatsappPhone: "",
+        publicUrl: "",
+        employeeCatalog: ["Divyesh", "Satyam", "Anuj"]
+      };
+
+      if (!appState.settings) {
+        appState.settings = {};
+        needsSave = true;
+      }
+
+      for (const [key, val] of Object.entries(defaultSettings)) {
+        if (appState.settings[key] === undefined || appState.settings[key] === null || appState.settings[key] === "") {
+          if (key === "supabaseUrl" || key === "supabaseKey" || key === "whatsappPhone" || key === "publicUrl") {
+            if (appState.settings[key] === undefined) {
+              appState.settings[key] = val;
+              needsSave = true;
+            }
+          } else {
+            appState.settings[key] = val;
+            needsSave = true;
+          }
+        }
       }
       
       // Auto-migrate old default catalogs if they are still matching placeholders
@@ -127,7 +159,8 @@ function initStorage() {
     console.warn("Could not parse URL query parameters:", e);
   }
 
-  // Reconcile and self-heal all row active statuses from stored logs
+  // Reconcile and self-heal all row active statuses and nursery tray inventory
+  reconcileTrayInventory();
   reconcileAllRowStates();
 }
 
@@ -139,6 +172,128 @@ function reconcileAllRowStates() {
     getActiveTransplantsForRow(r);
   }
   getActiveTransplantsForRow("Soil");
+  localStorage.setItem("polyhouse_erp_state", JSON.stringify(appState));
+}
+
+// Reconciles and deterministically calculates nursery tray inventory from sowing and transplant ledger
+function reconcileTrayInventory() {
+  if (!appState || !appState.sowingLogs || !appState.transplantLogs) return;
+
+  // 1. If we have cloud-synced logs (logs with supabaseId), purge any mock/demo sowing logs that lack supabaseId
+  const hasCloudSowings = appState.sowingLogs.some(s => s.supabaseId);
+  let cleanedSowings = appState.sowingLogs;
+  if (hasCloudSowings) {
+    cleanedSowings = cleanedSowings.filter(s => s.supabaseId || (s.id && s.id.startsWith("SOW-LOCAL-")));
+  }
+
+  // 2. Deduplicate sowing logs by supabaseId (or crop + sowDate + initialTrayCount)
+  const uniqueSowings = [];
+  const seenSowKeys = new Set();
+  
+  cleanedSowings.forEach(s => {
+    const key = s.supabaseId ? `id_${s.supabaseId}` : `sow_${(s.crop || '').toLowerCase()}_${s.sowDate}_${s.initialTrayCount || s.trayCount}`;
+    if (!seenSowKeys.has(key)) {
+      seenSowKeys.add(key);
+      if (!s.initialTrayCount) {
+        s.initialTrayCount = s.trayCount;
+      }
+      s.trayCount = s.initialTrayCount; // Reset to initial count for deterministic re-deduction
+      uniqueSowings.push(s);
+    }
+  });
+  appState.sowingLogs = uniqueSowings;
+
+  // 3. Sort sowing logs chronologically by sow date
+  appState.sowingLogs.sort((a, b) => new Date(a.sowDate) - new Date(b.sowDate));
+
+  // 4. Clean & deduplicate transplant logs
+  const hasCloudTx = appState.transplantLogs.some(t => t.supabaseId);
+  let cleanedTx = appState.transplantLogs;
+  if (hasCloudTx) {
+    cleanedTx = cleanedTx.filter(t => t.supabaseId || (t.id && t.id.startsWith("TX-LOCAL-")));
+  }
+
+  const uniqueTransplants = [];
+  const seenTxKeys = new Set();
+  cleanedTx.forEach(t => {
+    const key = t.supabaseId ? `tx_id_${t.supabaseId}` : `tx_${t.row}_${t.date}_${(t.crop || '').toLowerCase()}_${t.towersPlanted}`;
+    if (!seenTxKeys.has(key)) {
+      seenTxKeys.add(key);
+      uniqueTransplants.push(t);
+    }
+  });
+  appState.transplantLogs = uniqueTransplants;
+
+  // 5. Sort transplants chronologically by transplant date
+  const sortedTransplants = [...appState.transplantLogs].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  // 6. Apply each transplant deduction against sowing batches
+  sortedTransplants.forEach(t => {
+    const isSoil = (t.line === "Soil" || t.row === "Soil" || t.row === 0 || t.row === "0");
+    const rowVal = isSoil ? "Soil" : t.row;
+    const towersPlanted = parseInt(t.towersPlanted) || 126;
+    const cap = getRowCapacity(rowVal);
+    const towersCap = parseInt(appState.settings && appState.settings.towersPerLine) || 126;
+    const plantsPerTower = towersCap > 0 ? (cap / towersCap) : 60;
+    const totalPlants = towersPlanted * plantsPerTower;
+    const trayCap = parseInt(appState.settings && appState.settings.trayCapacity) || 40;
+    const computedTrays = Math.ceil(totalPlants / trayCap);
+    const traysUsed = (parseInt(t.traysUsed) > 0) ? parseInt(t.traysUsed) : computedTrays;
+    t.traysUsed = traysUsed;
+
+    const rawCrop = t.crop || (t.trayBatchId ? (appState.sowingLogs.find(s => s.id === t.trayBatchId) || {}).crop : "");
+    const cropName = (rawCrop || "").trim();
+    if (!cropName) return;
+
+    let remainingNeeded = traysUsed;
+
+    // A. If t.trayBatchId matches a specific batch (by id, supabaseId, or batchId), deduct from it first
+    if (t.trayBatchId) {
+      const targetBatch = appState.sowingLogs.find(s => 
+        (s.id === t.trayBatchId || (s.supabaseId && String(s.supabaseId) === String(t.trayBatchId)) || (s.batchId && s.batchId === t.trayBatchId)) && 
+        s.trayCount > 0
+      );
+      if (targetBatch) {
+        if (targetBatch.trayCount <= remainingNeeded) {
+          remainingNeeded -= targetBatch.trayCount;
+          targetBatch.trayCount = 0;
+        } else {
+          targetBatch.trayCount -= remainingNeeded;
+          remainingNeeded = 0;
+        }
+      }
+    }
+
+    // B. Deduct remaining from matching crop batches (FIFO - oldest sowDate first)
+    if (remainingNeeded > 0) {
+      const matchingBatches = appState.sowingLogs.filter(s => 
+        s.crop && s.crop.toLowerCase() === cropName.toLowerCase() && s.trayCount > 0
+      );
+      for (const batch of matchingBatches) {
+        if (remainingNeeded <= 0) break;
+        if (batch.trayCount <= remainingNeeded) {
+          remainingNeeded -= batch.trayCount;
+          batch.trayCount = 0;
+        } else {
+          batch.trayCount -= remainingNeeded;
+          remainingNeeded = 0;
+        }
+      }
+    }
+  });
+
+  // 7. Update statuses of all batches based on remaining trays and germination dates
+  const today = new Date();
+  appState.sowingLogs.forEach(s => {
+    if (s.trayCount <= 0) {
+      s.trayCount = 0;
+      s.status = "transplanted";
+    } else {
+      const readyDate = new Date(s.readyDate);
+      s.status = (today >= readyDate) ? "ready" : "germinating";
+    }
+  });
+
   localStorage.setItem("polyhouse_erp_state", JSON.stringify(appState));
 }
 
@@ -180,11 +335,16 @@ function getRowCapacity(row) {
   if (row === "Soil" || row === "soil") {
     return 5040; // Standard 126 slots * 40 plants capacity for Soil cultivation area
   }
-  const rowNum = parseInt(row);
-  const towers = appState.settings.towersPerLine;
-  const holders = rowNum <= 7 ? appState.settings.rows1to7Holders : appState.settings.rows8to19Holders;
-  const pph = rowNum <= 7 ? appState.settings.rows1to7PlantsPerHolder : appState.settings.rows8to19PlantsPerHolder;
-  return towers * holders * pph;
+  const rowNum = parseInt(row) || 1;
+  const towers = parseInt(appState.settings && appState.settings.towersPerLine) || 126;
+  const holders = rowNum <= 7 
+    ? (parseInt(appState.settings && appState.settings.rows1to7Holders) || 10) 
+    : (parseInt(appState.settings && appState.settings.rows8to19Holders) || 15);
+  const pph = rowNum <= 7 
+    ? (parseInt(appState.settings && appState.settings.rows1to7PlantsPerHolder) || 4) 
+    : (parseInt(appState.settings && appState.settings.rows8to19PlantsPerHolder) || 4);
+  const total = towers * holders * pph;
+  return (!isNaN(total) && total > 0) ? total : (rowNum <= 7 ? 5040 : 7560);
 }
 
 function getGerminationPeriod(type) {
@@ -1248,6 +1408,7 @@ function setupFormHandlers() {
     };
     
     appState.transplantLogs.push(newTx);
+    reconcileTrayInventory();
     saveState();
     
     const payload = {
@@ -1497,6 +1658,7 @@ function deleteLog(type, id) {
     deleteFromSupabase(targetLog.supabaseId);
   }
   
+  reconcileTrayInventory();
   saveState();
   refreshAll();
   showToast(`Record ${id} deleted successfully.`, "success");
@@ -1875,11 +2037,19 @@ async function syncWithCloud() {
           // Check duplicate
           const match = appState.sowingLogs.find(s => 
             s.supabaseId === log.id || 
-            (!s.supabaseId && s.crop === log.crop && s.sowDate === log.date && s.trayCount === log.trays)
+            (!s.supabaseId && s.crop && s.crop.toLowerCase() === (log.crop || '').toLowerCase() && s.sowDate === log.date && ((s.initialTrayCount && s.initialTrayCount === log.trays) || s.trayCount === log.trays))
           );
           if (match) {
+            let changed = false;
             if (!match.supabaseId) {
               match.supabaseId = log.id;
+              changed = true;
+            }
+            if (!match.initialTrayCount) {
+              match.initialTrayCount = log.trays;
+              changed = true;
+            }
+            if (changed) {
               localStorage.setItem("polyhouse_erp_state", JSON.stringify(appState));
             }
             return;
@@ -1894,6 +2064,7 @@ async function syncWithCloud() {
             id: "SOW-" + (appState.sowingLogs.length + 1),
             crop: log.crop,
             type: log.sow_type,
+            initialTrayCount: log.trays,
             trayCount: log.trays,
             sowDate: log.date,
             readyDate: readyDateObj.toISOString().split('T')[0],
@@ -2071,7 +2242,8 @@ async function syncWithCloud() {
         }
       });
       
-      // Always reconcile row statuses across all rows and refresh UI
+      // Always reconcile tray inventory and row statuses across all rows, then refresh UI
+      reconcileTrayInventory();
       reconcileAllRowStates();
       refreshAll();
       
@@ -2411,6 +2583,7 @@ function importParsedLogs() {
   });
   
   if (importCount > 0) {
+    reconcileTrayInventory();
     saveState();
     refreshAll();
     
